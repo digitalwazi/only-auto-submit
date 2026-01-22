@@ -1,0 +1,43 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Campaign {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  fields      String   // JSON string: { name: "...", email: "...", message: "..." }
+  status      String   @default("PAUSED") // RUNNING, PAUSED, STOPPED, COMPLETED
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  links       Link[]
+}
+
+model Link {
+  id         String   @id @default(cuid())
+  url        String
+  status     String   @default("PENDING") // PENDING, PROCESSING, SUCCESS, FAILED
+  error      String?
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([campaignId])
+  @@index([status])
+}
+
+model GlobalSettings {
+  id          Int     @id @default(1)
+  concurrency Int     @default(1) // Number of parallel tabs
+  isWorkerOn  Boolean @default(true) // Master kill switch
+}
+
