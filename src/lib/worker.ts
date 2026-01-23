@@ -118,7 +118,7 @@ export async function processCampaign(campaignId: string) {
                         // .//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'submit')]
                         const xpath = `//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${text.toLowerCase()}')] | //input[@type='submit' and contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${text.toLowerCase()}')]`;
 
-                        const elements = await page.$x(xpath);
+                        const elements = await page.$$(`xpath/${xpath}`);
                         for (const element of elements) {
                             try {
                                 const isVisible = await element.boundingBox();
