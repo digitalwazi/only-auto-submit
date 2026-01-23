@@ -2,6 +2,7 @@ import prisma from "@/lib/prisma";
 import WorkerControls from "@/components/WorkerControls";
 import CampaignActions from "@/components/CampaignActions";
 import WorkerPinger from "@/components/WorkerPinger";
+import { Globe } from "lucide-react";
 
 export default async function Dashboard() {
   const campaigns = await prisma.campaign.findMany({
