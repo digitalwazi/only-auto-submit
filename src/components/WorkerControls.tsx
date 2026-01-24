@@ -144,24 +144,6 @@ export default function WorkerControls() {
                     </select>
                 </div>
 
-                {/* Headless Mode */}
-                <div className="flex items-center justify-between pt-2">
-                    <div className="flex items-center gap-2 text-slate-300">
-                        {headless ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        <span className="text-sm font-medium">Headless Mode</span>
-                    </div>
-                    <button
-                        onClick={handleHeadlessToggle}
-                        disabled={saving}
-                        className={`text-xs font-bold px-3 py-1 rounded transition-colors ${headless
-                            ? "bg-slate-700 text-slate-400 hover:bg-slate-600"
-                            : "bg-indigo-500/20 text-indigo-400 border border-indigo-500/20"
-                            }`}
-                    >
-                        {headless ? "Hidden (Faster)" : "Visible (Slower)"}
-                    </button>
-                </div>
-
                 {/* Manual Restart */}
                 <button
                     onClick={handleRestart}

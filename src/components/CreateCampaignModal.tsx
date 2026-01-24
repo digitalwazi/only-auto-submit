@@ -80,6 +80,14 @@ export default function CreateCampaignModal() {
                         />
                     </div>
 
+                    <div className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/10">
+                        <input type="checkbox" name="headless" defaultChecked className="w-5 h-5 accent-indigo-500 cursor-pointer" />
+                        <div>
+                            <p className="text-sm font-bold text-white">Run in Background (Headless)</p>
+                            <p className="text-xs text-slate-400">Recommended for speed. Uncheck to see the browser while it works.</p>
+                        </div>
+                    </div>
+
                     <div className="flex justify-end gap-3 pt-4 border-t border-white/10 sticky bottom-0 bg-slate-900/50 backdrop-blur-xl p-4 -mx-6 -mb-6 z-10">
                         <button type="button" onClick={() => setIsOpen(false)} className="btn-glass px-6">Cancel</button>
                         <button disabled={isPending} type="submit" className="btn-primary min-w-[140px] flex items-center justify-center gap-2">

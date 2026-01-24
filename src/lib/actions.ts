@@ -6,33 +6,31 @@ import { revalidatePath } from "next/cache";
 export async function createCampaign(formData: FormData) {
     const name = formData.get("name") as string;
     const description = formData.get("description") as string;
-    const fieldsJson = formData.get("fields") as string; // Expecting JSON string from client
-    const linksRaw = formData.get("links") as string; // Expecting textarea blob
+    const fields = formData.get("fields") as string;
+    const linksRaw = formData.get("links") as string;
+    const headless = formData.get("headless") === "on"; // Checkbox value
 
-    const campaign = await prisma.campaign.create({
+    if (!name || !fields || !linksRaw) {
+        throw new Error("Missing required fields");
+    }
+
+    const links = linksRaw.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+
+    await prisma.campaign.create({
         data: {
             name,
             description,
-            fields: fieldsJson,
-            status: "PAUSED",
-        },
+            fields,
+            status: "RUNNING",
+            headless,
+            links: {
+                create: links.map(url => ({ url }))
+            }
+        }
     });
 
-    // Process links in batches to handle "lakhs"
-    const links = linksRaw.split("\n").map(l => l.trim()).filter(l => l !== "");
-    const batchSize = 1000;
-    for (let i = 0; i < links.length; i += batchSize) {
-        const batch = links.slice(i, i + batchSize);
-        await prisma.link.createMany({
-            data: batch.map(url => ({
-                url,
-                campaignId: campaign.id,
-            })),
-        });
-    }
-
     revalidatePath("/");
-    return { success: true, id: campaign.id };
+    return { success: true };
 }
 
 export async function toggleCampaign(id: string, currentStatus: string) {

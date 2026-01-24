@@ -22,14 +22,18 @@ export async function processCampaign(campaignId: string) {
     if (!settings.isWorkerOn) return;
 
     // Default to true if undefined (safety)
-    const isHeadless = settings.headless !== false;
+    // const isHeadless = settings.headless !== false;
 
     const concurrency = settings.concurrency || 1;
     const campaign = await prisma.campaign.findUnique({
         where: { id: campaignId },
+        select: { id: true, name: true, fields: true, status: true, headless: true } // Fetch headless
     });
 
     if (!campaign || campaign.status !== "RUNNING") return;
+
+    // Per-campaign Headless Override
+    const isHeadless = campaign.headless !== false;
 
     const fields = JSON.parse(campaign.fields);
     const links = await prisma.link.findMany({

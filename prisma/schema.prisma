@@ -16,6 +16,7 @@ model Campaign {
   description String?
   fields      String   // JSON string: { name: "...", email: "...", message: "..." }
   status      String   @default("PAUSED") // RUNNING, PAUSED, STOPPED, COMPLETED
+  headless    Boolean  @default(true) // Run in background (hidden) or visible
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   links       Link[]

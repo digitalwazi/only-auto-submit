@@ -5,6 +5,8 @@ import WorkerPinger from "@/components/WorkerPinger";
 import LiveTerminal from "@/components/LiveTerminal";
 import { Globe } from "lucide-react";
 
+export const dynamic = 'force-dynamic';
+
 export default async function Dashboard() {
   const campaigns = await prisma.campaign.findMany({
     include: {
