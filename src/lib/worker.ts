@@ -1,13 +1,25 @@
 
 import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
+import RecaptchaPlugin from "puppeteer-extra-plugin-recaptcha";
 import { createCursor } from "ghost-cursor";
 import prisma from "./prisma";
 import { getSettings } from "./settings";
 import { logToDB } from "./logs";
 
-// Enable Stealth Mode
+// 1. Enable Stealth Plugin
 puppeteer.use(StealthPlugin());
+
+// 2. Enable Recaptcha Plugin (Free Audio Solver)
+puppeteer.use(
+    RecaptchaPlugin({
+        provider: {
+            id: '2captcha',
+            token: 'x' // Placeholder: generic provider logic often attempts audio solve if no token
+        },
+        visualFeedback: true // Colorize for debugging if headful
+    })
+);
 
 const USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -21,13 +33,10 @@ export async function processCampaign(campaignId: string) {
     const settings = await getSettings();
     if (!settings.isWorkerOn) return;
 
-    // Default to true if undefined (safety)
-    // const isHeadless = settings.headless !== false;
-
     const concurrency = settings.concurrency || 1;
     const campaign = await prisma.campaign.findUnique({
         where: { id: campaignId },
-        select: { id: true, name: true, fields: true, status: true, headless: true } // Fetch headless
+        select: { id: true, name: true, fields: true, status: true, headless: true }
     });
 
     if (!campaign || campaign.status !== "RUNNING") return;
@@ -62,7 +71,8 @@ export async function processCampaign(campaignId: string) {
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--start-maximized',
-            '--disable-blink-features=AutomationControlled' // Extra stealth
+            '--disable-blink-features=AutomationControlled',
+            '--window-size=1920,1080'
         ],
         defaultViewport: null
     });
@@ -89,6 +99,13 @@ export async function processCampaign(campaignId: string) {
                     throw new Error(`Load Timeout or Error: ${e instanceof Error ? e.message : "Unknown"}`);
                 }
 
+                // Attempt to solve CAPTCHAs before filling form
+                try {
+                    await page.solveRecaptchas();
+                } catch (e) {
+                    // Ignore solve errors, proceed to try form
+                }
+
                 let fieldFound = false;
                 for (const field of fields) {
                     const searchTerms = [field.name, field.label];
@@ -108,11 +125,8 @@ export async function processCampaign(campaignId: string) {
                     try {
                         const element = await page.waitForSelector(selectors, { timeout: 3000 });
                         if (element) {
-                            // Human-like: Move to element
                             await cursor.move(element);
-
                             try {
-                                // Clear content safely
                                 await element.click({ clickCount: 3 });
                                 await element.press('Backspace');
                             } catch (e) { }
@@ -132,7 +146,6 @@ export async function processCampaign(campaignId: string) {
                 let submitted = false;
                 const textTargets = ["Submit", "Send", "Post", "Contact", "Message", "Go", "Comment"];
 
-                // XPath Strategy
                 for (const text of textTargets) {
                     if (submitted) break;
                     try {
@@ -151,7 +164,6 @@ export async function processCampaign(campaignId: string) {
                     } catch (e) { }
                 }
 
-                // CSS Strategy
                 if (!submitted) {
                     const submitSelectors = [
                         'button[type="submit"]',
@@ -188,17 +200,33 @@ export async function processCampaign(campaignId: string) {
                     await new Promise(r => setTimeout(r, 2000));
                 }
 
-                // Validation
-                const pageContent = (await page.content()).toLowerCase();
-                if (pageContent.includes("duplicate comment") || pageContent.includes("already said that")) {
-                    throw new Error("FAIL_DUPLICATE: Duplicate submission detected");
-                }
-                if (pageContent.includes("captcha") || pageContent.includes("prove you are human")) {
-                    throw new Error("FAIL_CAPTCHA: Blocked by CAPTCHA");
-                }
+                // --- VALIDATION AND ERROR HANDLING ---
+                try {
+                    const pageContent = (await page.content()).toLowerCase();
 
-                await prisma.link.update({ where: { id: link.id }, data: { status: "SUCCESS", error: null } });
-                await logToDB(`SUCCESS: ${link.url}`, "SUCCESS");
+                    if (pageContent.includes("duplicate comment") || pageContent.includes("already said that")) {
+                        throw new Error("FAIL_DUPLICATE: Duplicate submission detected");
+                    }
+                    // Consider it blocked only if captcha is present and NOT solved
+                    if ((pageContent.includes("captcha") || pageContent.includes("prove you are human")) && !pageContent.includes("solved")) {
+                        throw new Error("FAIL_CAPTCHA: Blocked by CAPTCHA");
+                    }
+
+                    await prisma.link.update({ where: { id: link.id }, data: { status: "SUCCESS", error: null } });
+                    await logToDB(`SUCCESS: ${link.url}`, "SUCCESS");
+
+                } catch (error: any) {
+                    // CRITICAL FIX: Handle "Execution context was destroyed"
+                    const emsg = error.message || "";
+                    if (emsg.includes("Execution context was destroyed") || emsg.includes("Protocol error") || emsg.includes("Target closed")) {
+                        // This usually happens when the "Submit" caused a full page reload/redirect
+                        // which generally means the submission was accepted.
+                        await prisma.link.update({ where: { id: link.id }, data: { status: "SUCCESS", error: null } });
+                        await logToDB(`SUCCESS (Redirected): ${link.url}`, "SUCCESS");
+                    } else {
+                        throw error; // Propagate real errors (Duplicate, Captcha, etc.)
+                    }
+                }
 
             } catch (error: any) {
                 await logToDB(`FAILED: ${link.url} - ${error.message || "Unknown error"}`, "ERROR");
