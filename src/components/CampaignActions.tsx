@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Play, Pause, FileSpreadsheet, Trash2, Loader2 } from "lucide-react";
+import Link from "next/link";
+import { Play, Pause, FileSpreadsheet, Trash2, Loader2, Download } from "lucide-react";
 import { toggleCampaign, deleteCampaign } from "@/lib/actions";
 import { getCampaignProgress } from "@/lib/stats";
 
@@ -125,12 +126,19 @@ export default function CampaignActions({ campaign }: { campaign: any }) {
                     )}
                     {stats.status === 'RUNNING' ? 'Pause' : 'Start'}
                 </button>
-                <button
-                    onClick={handleReport}
+                <Link
+                    href={`/campaigns/${campaign.id}`}
                     className="btn-glass flex items-center justify-center gap-2 text-sm text-indigo-400 border-indigo-500/20"
                 >
                     <FileSpreadsheet className="w-4 h-4" />
-                    Report
+                    Details
+                </Link>
+                <button
+                    onClick={handleReport}
+                    className="btn-glass flex items-center justify-center gap-2 text-sm text-slate-400 border-white/10 hover:text-white"
+                >
+                    <Download className="w-4 h-4" />
+                    Excel
                 </button>
             </div>
         </>
