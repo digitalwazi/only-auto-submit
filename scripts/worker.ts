@@ -33,7 +33,9 @@ async function runWorker() {
         // Heartbeat Logger (Proof of Life)
         try {
             const time = new Date().toISOString();
-            fs.appendFileSync('public/uptime.log', `[${time}] Worker ALIVE - Campaigns found: Unknown(Loop)\n`);
+            const logMsg = `[${time}] Worker ALIVE - Campaigns found: Unknown(Loop)\n`;
+            fs.appendFileSync('/root/uptime.log', logMsg);
+            console.log("HEARTBEAT WRITTEN to /root/uptime.log");
         } catch (e) { console.error("Logger failed", e); }
 
         // Wait before next loop
