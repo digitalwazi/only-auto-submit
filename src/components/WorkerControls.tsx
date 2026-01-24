@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { getSettings, updateSettings } from "@/lib/settings";
 import { triggerRestart } from "@/lib/logs";
-import { Power, Settings2, Loader2, RefreshCw, Clock } from "lucide-react";
+import { Power, Settings2, Loader2, RefreshCw, Clock, Eye, EyeOff } from "lucide-react";
 
 export default function WorkerControls() {
     const [isOn, setIsOn] = useState(true);
@@ -12,6 +12,7 @@ export default function WorkerControls() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [restarting, setRestarting] = useState(false);
+    const [headless, setHeadless] = useState(true);
 
     useEffect(() => {
         getSettings()
@@ -20,6 +21,7 @@ export default function WorkerControls() {
                     setIsOn(s.isWorkerOn);
                     setThreads(s.concurrency);
                     setAutoRestart(s.autoRestartInterval || 0);
+                    setHeadless(s.headless);
                 }
             })
             .catch((e) => console.error("Failed to load settings:", e))
@@ -30,7 +32,15 @@ export default function WorkerControls() {
         setSaving(true);
         const newState = !isOn;
         setIsOn(newState);
-        await updateSettings(threads, newState, autoRestart);
+        await updateSettings(threads, newState, autoRestart, headless);
+        setSaving(false);
+    }
+
+    async function handleHeadlessToggle() {
+        const newState = !headless;
+        setHeadless(newState);
+        setSaving(true);
+        await updateSettings(threads, isOn, autoRestart, newState);
         setSaving(false);
     }
 
@@ -59,7 +69,7 @@ export default function WorkerControls() {
         const val = parseInt(e.target.value);
         setAutoRestart(val);
         setSaving(true);
-        await updateSettings(threads, isOn, val);
+        await updateSettings(threads, isOn, val, headless);
         setSaving(false);
     }
 
@@ -132,6 +142,24 @@ export default function WorkerControls() {
                         <option value={60}>Every 1 hour</option>
                         <option value={240}>Every 4 hours</option>
                     </select>
+                </div>
+
+                {/* Headless Mode */}
+                <div className="flex items-center justify-between pt-2">
+                    <div className="flex items-center gap-2 text-slate-300">
+                        {headless ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        <span className="text-sm font-medium">Headless Mode</span>
+                    </div>
+                    <button
+                        onClick={handleHeadlessToggle}
+                        disabled={saving}
+                        className={`text-xs font-bold px-3 py-1 rounded transition-colors ${headless
+                            ? "bg-slate-700 text-slate-400 hover:bg-slate-600"
+                            : "bg-indigo-500/20 text-indigo-400 border border-indigo-500/20"
+                            }`}
+                    >
+                        {headless ? "Hidden (Faster)" : "Visible (Slower)"}
+                    </button>
                 </div>
 
                 {/* Manual Restart */}

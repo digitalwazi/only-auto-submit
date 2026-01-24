@@ -1,32 +1,31 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { processCampaign } from "@/lib/worker";
-import { logToDB } from "@/lib/logs";
+
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
-    const campaigns = await prisma.campaign.findMany({
+    // Check if there are running campaigns
+    const runningCampaigns = await prisma.campaign.count({
         where: { status: "RUNNING" }
     });
 
-    if (campaigns.length === 0) {
-        // Log occasionally to show life, or maybe just once per hour? 
-        // For now, let's log it so user sees SOMETHING
-        // await logToDB("Worker heartbeat: No running campaigns.", "INFO");
-        return NextResponse.json({ message: "No running campaigns found." });
+    if (runningCampaigns === 0) {
+        return NextResponse.json({
+            status: "IDLE",
+            message: "No running campaigns."
+        });
     }
 
-    // Process one batch for each running campaign
-    const results = [];
-    for (const campaign of campaigns) {
-        try {
-            await logToDB(`Starting batch for campaign: ${campaign.name}`, "INFO");
-            await processCampaign(campaign.id);
-            results.push({ id: campaign.id, status: "SUCCESS" });
-        } catch (e: any) {
-            await logToDB(`Error processing campaign ${campaign.name}: ${e.message}`, "ERROR");
-            results.push({ id: campaign.id, status: "ERROR", error: e.message });
-        }
-    }
+    // Check last log activity (ensure worker is alive)
+    const lastLog = await prisma.systemLog.findFirst({
+        orderBy: { createdAt: 'desc' }
+    });
 
-    return NextResponse.json({ processed: results });
+    const isAlive = lastLog && (new Date().getTime() - lastLog.createdAt.getTime() < 120000); // 2 mins
+
+    return NextResponse.json({
+        status: isAlive ? "ACTIVE" : "STALLED",
+        running_campaigns: runningCampaigns,
+        last_log: lastLog?.createdAt
+    });
 }

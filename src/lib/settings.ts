@@ -22,18 +22,19 @@ export async function getSettings() {
     return settings;
 }
 
-export async function updateSettings(concurrency: number, isWorkerOn: boolean, autoRestartInterval: number = 0) {
+export async function updateSettings(concurrency: number, isWorkerOn: boolean, autoRestartInterval: number = 0, headless: boolean = true) {
     if (concurrency < 1) concurrency = 1;
     if (concurrency > 10) concurrency = 10; // Safety cap
 
     const settings = await prisma.globalSettings.upsert({
         where: { id: 1 },
-        update: { concurrency, isWorkerOn, autoRestartInterval },
+        update: { concurrency, isWorkerOn, autoRestartInterval, headless },
         create: {
             id: 1,
             concurrency,
             isWorkerOn,
-            autoRestartInterval
+            autoRestartInterval,
+            headless
         },
     });
 
