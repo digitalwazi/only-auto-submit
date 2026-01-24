@@ -30,11 +30,21 @@ export default async function CampaignDetailsPage({
         take: 500
     });
 
+    // Fetch accurate global stats
+    const statsGroup = await prisma.link.groupBy({
+        by: ['status'],
+        where: { campaignId: id },
+        _count: { status: true }
+    });
+
     const stats = {
-        success: links.filter(l => l.status === "SUCCESS").length,
-        failed: links.filter(l => l.status === "FAILED").length,
-        pending: links.filter(l => l.status === "PENDING" || l.status === "PROCESSING").length
+        success: statsGroup.find(s => s.status === "SUCCESS")?._count.status || 0,
+        failed: statsGroup.find(s => s.status === "FAILED")?._count.status || 0,
+        pending: statsGroup.find(s => s.status === "PENDING" || s.status === "PROCESSING")?._count.status || 0
     };
+    // Pending logic might need summation if grouping separates PENDING/PROCESSING
+    const pendingCount = statsGroup.filter(s => s.status === "PENDING" || s.status === "PROCESSING").reduce((acc, curr) => acc + curr._count.status, 0);
+    stats.pending = pendingCount;
 
     return (
         <div className="p-8 max-w-7xl mx-auto space-y-8">
