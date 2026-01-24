@@ -14,12 +14,16 @@ export default function WorkerControls() {
     const [restarting, setRestarting] = useState(false);
 
     useEffect(() => {
-        getSettings().then((s) => {
-            setIsOn(s.isWorkerOn);
-            setThreads(s.concurrency);
-            setAutoRestart(s.autoRestartInterval || 0);
-            setLoading(false);
-        });
+        getSettings()
+            .then((s) => {
+                if (s) {
+                    setIsOn(s.isWorkerOn);
+                    setThreads(s.concurrency);
+                    setAutoRestart(s.autoRestartInterval || 0);
+                }
+            })
+            .catch((e) => console.error("Failed to load settings:", e))
+            .finally(() => setLoading(false));
     }, []);
 
     async function handleToggle() {
