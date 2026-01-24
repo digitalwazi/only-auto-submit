@@ -102,7 +102,7 @@ export async function processCampaign(campaignId: string) {
 
                 // Attempt to solve CAPTCHAs before filling form
                 try {
-                    await page.solveRecaptchas();
+                    await (page as any).solveRecaptchas();
                 } catch (e) {
                     // Ignore solve errors, proceed to try form
                 }
