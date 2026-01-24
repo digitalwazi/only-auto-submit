@@ -2,6 +2,7 @@
 import { processCampaign } from "../src/lib/worker";
 import prisma from "../src/lib/prisma";
 import { logToDB } from "../src/lib/logs";
+import fs from "fs";
 
 const POLL_INTERVAL = 5000; // 5 seconds
 
@@ -27,6 +28,13 @@ async function runWorker() {
             console.error("Worker Error:", error);
             await logToDB(`Worker Daemon Error: ${error instanceof Error ? error.message : "Unknown"}`, "ERROR");
         }
+
+
+        // Heartbeat Logger (Proof of Life)
+        try {
+            const time = new Date().toISOString();
+            fs.appendFileSync('public/uptime.log', `[${time}] Worker ALIVE - Campaigns found: Unknown(Loop)\n`);
+        } catch (e) { console.error("Logger failed", e); }
 
         // Wait before next loop
         await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
