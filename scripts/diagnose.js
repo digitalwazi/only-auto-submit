@@ -12,19 +12,22 @@ const conn = new Client();
 
 conn.on('ready', () => {
     console.log('Client :: ready');
+    const projectDir = '/root/auto-submitter';
     const cmd = `
-        echo "=== .NEXT CONTENTS ==="; ls -la /root/auto-submitter/.next;
-        echo "=== BUILD ID ==="; cat /root/auto-submitter/.next/BUILD_ID;
+        echo "=== MEMORY ==="; free -m;
+        echo "=== SWAP ==="; swapon -s;
+        echo "=== DIR LIST ==="; ls -la ${projectDir};
+        echo "=== .NEXT DIR ==="; ls -la ${projectDir}/.next || echo "No .next dir";
+        echo "=== PM2 LOGS ==="; pm2 logs next-app --lines 50 --nostream;
     `;
     conn.exec(cmd, (err, stream) => {
         if (err) throw err;
+        let output = '';
         stream.on('close', (code, signal) => {
             console.log('Stream :: close :: code: ' + code + ', signal: ' + signal);
             conn.end();
         }).on('data', (data) => {
             process.stdout.write(data);
-        }).stderr.on('data', (data) => {
-            process.stderr.write(data);
         });
     });
 }).connect(config);

@@ -42,8 +42,9 @@ export async function toggleCampaign(id: string, currentStatus: string) {
     revalidatePath("/");
 }
 
-await prisma.campaign.delete({ where: { id } });
-revalidatePath("/");
+export async function deleteCampaign(id: string) {
+    await prisma.campaign.delete({ where: { id } });
+    revalidatePath("/");
 }
 
 export async function retryCampaign(id: string) {

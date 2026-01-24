@@ -12,10 +12,19 @@ const conn = new Client();
 
 conn.on('ready', () => {
     console.log('Client :: ready');
+    const projectDir = '/root/auto-submitter';
+
+    // Check .next recursive, and tail log
     const cmd = `
-        echo "=== .NEXT CONTENTS ==="; ls -la /root/auto-submitter/.next;
-        echo "=== BUILD ID ==="; cat /root/auto-submitter/.next/BUILD_ID;
+        cd ${projectDir};
+        echo "=== .NEXT STRUCTURE ===";
+        ls -R .next | grep ":$" | head -n 20; 
+        echo "=== BUILD_ID LOCATION ===";
+        find .next -name BUILD_ID;
+        echo "=== BUILD LOG TAIL ===";
+        tail -n 50 build.log;
     `;
+
     conn.exec(cmd, (err, stream) => {
         if (err) throw err;
         stream.on('close', (code, signal) => {

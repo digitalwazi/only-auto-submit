@@ -5,17 +5,29 @@ const config = {
     port: 22,
     username: 'root',
     password: 'Wazi123@123123',
-    readyTimeout: 60000,
+    readyTimeout: 600000,
 };
 
 const conn = new Client();
 
 conn.on('ready', () => {
     console.log('Client :: ready');
+    const projectDir = '/root/auto-submitter';
+    const envSetup = 'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && \\. "$NVM_DIR/nvm.sh"';
+
     const cmd = `
-        echo "=== .NEXT CONTENTS ==="; ls -la /root/auto-submitter/.next;
-        echo "=== BUILD ID ==="; cat /root/auto-submitter/.next/BUILD_ID;
+        cd ${projectDir};
+        ${envSetup};
+        echo "=== NEXT VERSION ==="; npx next --version;
+        echo "=== BUILDING ===";
+        mkdir -p .next;
+        npm run build > build.log 2>&1;
+        echo "=== BUILD LOG ===";
+        cat build.log;
+        echo "=== LIST .NEXT ===";
+        ls -la .next;
     `;
+
     conn.exec(cmd, (err, stream) => {
         if (err) throw err;
         stream.on('close', (code, signal) => {
