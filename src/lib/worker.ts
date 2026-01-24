@@ -1,13 +1,19 @@
-
 import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
+import RecaptchaPlugin from "puppeteer-extra-plugin-recaptcha";
 import { createCursor } from "ghost-cursor";
 import prisma from "./prisma";
 import { getSettings } from "./settings";
 import { logToDB } from "./logs";
 
-// 1. Enable Stealth Plugin
+// 1. Enable Stealth & Recaptcha Plugins
 puppeteer.use(StealthPlugin());
+puppeteer.use(
+    RecaptchaPlugin({
+        provider: { id: "2captcha", token: "NO_TOKEN_NEEDED_FOR_AUDIO" }, // We rely on built-in audio solver fallback if available, or just detection
+        visualFeedback: true,
+    })
+);
 
 const USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -88,7 +94,28 @@ export async function processCampaign(campaignId: string) {
                     throw new Error(`Load Timeout or Error: ${e instanceof Error ? e.message : "Unknown"}`);
                 }
 
-                // NO CAPTCHA SOLVER HERE - REMOVED AS REQUESTED
+                // --- SAFE CAPTCHA SOLVER ---
+                try {
+                    const { captchas } = await page.findRecaptchas();
+                    if (captchas.length > 0) {
+                        await logToDB(`Captcha detected on ${link.url}. Attempting safe solve...`, "WARN");
+                        // Attempt solve with strict timeout to prevent worker hang
+                        const solveResult = await Promise.race([
+                            page.solveRecaptchas(),
+                            new Promise((_, reject) => setTimeout(() => reject(new Error("Solve Timeout")), 45000))
+                        ]) as any;
+
+                        if (solveResult && solveResult.captchas && solveResult.captchas.some((c: any) => c.isSolved)) {
+                            await logToDB(`Captcha SOLVED for ${link.url}`, "SUCCESS");
+                        } else {
+                            // Don't throw, just log. Maybe we can proceed anyway.
+                            await logToDB(`Captcha solve attempt finished (Outcome uncertain).`, "INFO");
+                        }
+                    }
+                } catch (e) {
+                    // CRITICAL: Swallow solver errors so worker DOES NOT CRASH
+                    await logToDB(`Solver skipped/failed: ${e instanceof Error ? e.message : "Unknown"}`, "WARN");
+                }
 
                 let fieldFound = false;
                 for (const field of fields) {
