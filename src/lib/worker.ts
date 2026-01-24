@@ -34,7 +34,7 @@ export async function processCampaign(campaignId: string) {
     const settings = await getSettings();
     if (!settings.isWorkerOn) return;
 
-    const concurrency = settings.concurrency || 1;
+    const concurrency = settings.concurrency || 5; // Boost default speed
     const campaign = await prisma.campaign.findUnique({
         where: { id: campaignId },
         select: { id: true, name: true, fields: true, status: true, headless: true }
@@ -132,8 +132,8 @@ export async function processCampaign(campaignId: string) {
                                 await element.press('Backspace');
                             } catch (e) { }
 
-                            // Human-like typing
-                            await element.type(field.value, { delay: Math.floor(Math.random() * 50) + 30 });
+                            // Optimized Human-like typing (Faster)
+                            await element.type(field.value, { delay: Math.floor(Math.random() * 10) + 5 });
                             fieldFound = true;
                         }
                     } catch (e) { }
@@ -157,7 +157,7 @@ export async function processCampaign(campaignId: string) {
                                 if (await element.boundingBox()) {
                                     await cursor.click(element);
                                     submitted = true;
-                                    await new Promise(r => setTimeout(r, 2000));
+                                    await new Promise(r => setTimeout(r, 1000)); // Reduced wait
                                     break;
                                 }
                             } catch (e) { }

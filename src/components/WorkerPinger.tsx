@@ -9,13 +9,11 @@ export default function WorkerPinger() {
     useEffect(() => {
         const interval = setInterval(async () => {
             try {
-                const res = await fetch("/api/worker/run");
-                if (res.ok) {
-                    // Revalidate the page data if something was processed
-                    router.refresh();
-                }
+                // Passive check only - do not trigger run
+                // const res = await fetch("/api/worker/run"); 
+                console.log("Client connected. Background worker should be running on server.");
             } catch (e) {
-                console.error("Worker ping failed", e);
+                console.error("Connection check failed", e);
             }
         }, 10000); // Ping every 10 seconds
 
