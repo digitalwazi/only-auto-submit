@@ -14,6 +14,7 @@ export async function getSettings() {
                 id: 1,
                 concurrency: 4, // Default to 4 threads
                 isWorkerOn: true,
+                autoRestartInterval: 0
             },
         });
     }
@@ -21,17 +22,18 @@ export async function getSettings() {
     return settings;
 }
 
-export async function updateSettings(concurrency: number, isWorkerOn: boolean) {
+export async function updateSettings(concurrency: number, isWorkerOn: boolean, autoRestartInterval: number = 0) {
     if (concurrency < 1) concurrency = 1;
     if (concurrency > 10) concurrency = 10; // Safety cap
 
     const settings = await prisma.globalSettings.upsert({
         where: { id: 1 },
-        update: { concurrency, isWorkerOn },
+        update: { concurrency, isWorkerOn, autoRestartInterval },
         create: {
             id: 1,
             concurrency,
             isWorkerOn,
+            autoRestartInterval
         },
     });
 

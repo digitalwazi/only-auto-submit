@@ -2,18 +2,22 @@
 
 import { useState, useEffect } from "react";
 import { getSettings, updateSettings } from "@/lib/settings";
-import { Power, Settings2, Loader2 } from "lucide-react";
+import { triggerRestart } from "@/lib/logs";
+import { Power, Settings2, Loader2, RefreshCw, Clock } from "lucide-react";
 
 export default function WorkerControls() {
     const [isOn, setIsOn] = useState(true);
     const [threads, setThreads] = useState(4);
+    const [autoRestart, setAutoRestart] = useState(0);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [restarting, setRestarting] = useState(false);
 
     useEffect(() => {
         getSettings().then((s) => {
             setIsOn(s.isWorkerOn);
             setThreads(s.concurrency);
+            setAutoRestart(s.autoRestartInterval || 0);
             setLoading(false);
         });
     }, []);
@@ -22,7 +26,7 @@ export default function WorkerControls() {
         setSaving(true);
         const newState = !isOn;
         setIsOn(newState);
-        await updateSettings(threads, newState);
+        await updateSettings(threads, newState, autoRestart);
         setSaving(false);
     }
 
@@ -31,9 +35,27 @@ export default function WorkerControls() {
         setThreads(val);
     }
 
-    async function saveThreads() {
+    async function saveSettings() {
         setSaving(true);
-        await updateSettings(threads, isOn);
+        await updateSettings(threads, isOn, autoRestart);
+        setSaving(false);
+    }
+
+    async function handleRestart() {
+        if (!confirm("Are you sure you want to FORCE RESTART the worker? This will stop all current tasks.")) return;
+        setRestarting(true);
+        await triggerRestart();
+        // Page will likely become unresponsive for a moment, that's expected
+        setTimeout(() => {
+            window.location.reload();
+        }, 5000);
+    }
+
+    async function handleAutoRestartChange(e: React.ChangeEvent<HTMLSelectElement>) {
+        const val = parseInt(e.target.value);
+        setAutoRestart(val);
+        setSaving(true);
+        await updateSettings(threads, isOn, val);
         setSaving(false);
     }
 
@@ -64,12 +86,13 @@ export default function WorkerControls() {
             </div>
 
             <div className="space-y-4 pt-4 border-t border-white/5">
+                {/* Concurrency */}
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-slate-300">
                         <Settings2 className="w-4 h-4" />
-                        <span className="text-sm font-medium">Concurrency (Threads)</span>
+                        <span className="text-sm font-medium">Concurrency</span>
                     </div>
-                    <span className="text-2xl font-bold font-mono text-indigo-400">{threads}</span>
+                    <span className="text-xl font-bold font-mono text-indigo-400">{threads}</span>
                 </div>
 
                 <div className="flex items-center gap-4">
@@ -80,14 +103,45 @@ export default function WorkerControls() {
                         max="10"
                         value={threads}
                         onChange={handleThreadsChange}
-                        onMouseUp={saveThreads}
-                        onTouchEnd={saveThreads}
+                        onMouseUp={saveSettings}
+                        onTouchEnd={saveSettings}
                         className="flex-1 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400"
                     />
                     <span className="text-xs text-slate-500 font-mono">10</span>
                 </div>
-                <p className="text-xs text-slate-500 text-center">
-                    Higher threads = faster speed but more CPU usage.
+
+                {/* Auto Restart */}
+                <div className="flex items-center justify-between pt-2">
+                    <div className="flex items-center gap-2 text-slate-300">
+                        <Clock className="w-4 h-4" />
+                        <span className="text-sm font-medium">Auto Restart</span>
+                    </div>
+                    <select
+                        value={autoRestart}
+                        onChange={handleAutoRestartChange}
+                        disabled={saving}
+                        className="bg-slate-800 border-none text-xs rounded px-2 py-1 text-slate-300 focus:ring-1 focus:ring-indigo-500"
+                    >
+                        <option value={0}>Disabled</option>
+                        <option value={15}>Every 15 mins</option>
+                        <option value={30}>Every 30 mins</option>
+                        <option value={60}>Every 1 hour</option>
+                        <option value={240}>Every 4 hours</option>
+                    </select>
+                </div>
+
+                {/* Manual Restart */}
+                <button
+                    onClick={handleRestart}
+                    disabled={restarting}
+                    className="w-full flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white py-2 rounded-lg text-xs font-medium transition-all group"
+                >
+                    <RefreshCw className={`w-3 h-3 ${restarting ? "animate-spin" : "group-hover:rotate-180 transition-transform duration-500"}`} />
+                    {restarting ? "Restarting Server..." : "Force Restart Server"}
+                </button>
+
+                <p className="text-[10px] text-slate-500 text-center">
+                    Higher threads = faster speed. Restart if memory usage gets high.
                 </p>
             </div>
         </div>

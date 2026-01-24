@@ -39,5 +39,13 @@ model GlobalSettings {
   id          Int     @id @default(1)
   concurrency Int     @default(1) // Number of parallel tabs
   isWorkerOn  Boolean @default(true) // Master kill switch
+  autoRestartInterval Int @default(0) // Minutes (0 = off)
+}
+
+model SystemLog {
+  id        Int      @id @default(autoincrement())
+  message   String
+  type      String   @default("INFO") // INFO, SUCCESS, ERROR, WARN
+  createdAt DateTime @default(now())
 }
 

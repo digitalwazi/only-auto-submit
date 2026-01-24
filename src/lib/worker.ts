@@ -1,12 +1,13 @@
 import puppeteer from "puppeteer";
 import prisma from "./prisma";
 import { getSettings } from "./settings";
+import { logToDB } from "./logs";
 
 export async function processCampaign(campaignId: string) {
     // 1. Check Global Kill Switch & Concurrency
     const settings = await getSettings();
     if (!settings.isWorkerOn) {
-        console.log("Worker is globally paused.");
+        // await logToDB("Worker is globally paused.", "WARN"); // Too noisy
         return;
     }
 
@@ -35,6 +36,7 @@ export async function processCampaign(campaignId: string) {
                 where: { id: campaignId },
                 data: { status: "COMPLETED" }
             });
+            await logToDB(`Campaign "${campaign.name}" completed!`, "SUCCESS");
         }
         return;
     }
@@ -53,6 +55,7 @@ export async function processCampaign(campaignId: string) {
             try {
                 // Clear previous errors when starting
                 await prisma.link.update({ where: { id: link.id }, data: { status: "PROCESSING", error: null } });
+                await logToDB(`Processing: ${link.url}`, "INFO");
 
                 page = await browser.newPage();
                 // Set a realistic user agent
@@ -187,9 +190,11 @@ export async function processCampaign(campaignId: string) {
 
                 // If good:
                 await prisma.link.update({ where: { id: link.id }, data: { status: "SUCCESS", error: null } });
+                await logToDB(`SUCCESS: ${link.url}`, "SUCCESS");
 
             } catch (error: any) {
-                console.error(`Error processing ${link.url}:`, error);
+                // console.error(`Error processing ${link.url}:`, error);
+                await logToDB(`FAILED: ${link.url} - ${error.message || "Unknown error"}`, "ERROR");
                 await prisma.link.update({
                     where: { id: link.id },
                     data: { status: "FAILED", error: error.message || "Unknown error" }
@@ -200,5 +205,14 @@ export async function processCampaign(campaignId: string) {
         }));
     } finally {
         await browser.close();
+    }
+
+    // Auto-Restart Logic
+    if (settings.autoRestartInterval > 0) {
+        const uptimeMinutes = process.uptime() / 60;
+        if (uptimeMinutes > settings.autoRestartInterval) {
+            await logToDB(`Auto-restart triggered after ${Math.round(uptimeMinutes)} minutes.`, "WARN");
+            process.exit(0); // Exit cleanly, let PM2 restart
+        }
     }
 }

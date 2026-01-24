@@ -2,6 +2,7 @@ import prisma from "@/lib/prisma";
 import WorkerControls from "@/components/WorkerControls";
 import CampaignActions from "@/components/CampaignActions";
 import WorkerPinger from "@/components/WorkerPinger";
+import LiveTerminal from "@/components/LiveTerminal";
 import { Globe } from "lucide-react";
 
 export default async function Dashboard() {
@@ -40,6 +41,7 @@ export default async function Dashboard() {
       </header>
 
       <WorkerControls />
+      <LiveTerminal /> {/* Added LiveTerminal below WorkerControls */}
 
       {campaigns.length === 0 ? (
         <div className="glass-card rounded-[2.5rem] p-24 text-center">
