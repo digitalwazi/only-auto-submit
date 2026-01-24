@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Play, Pause, FileSpreadsheet, Trash2, Loader2, Download } from "lucide-react";
-import { toggleCampaign, deleteCampaign } from "@/lib/actions";
+import { Play, Pause, FileSpreadsheet, Trash2, Loader2, Download, RefreshCcw } from "lucide-react";
+import { toggleCampaign, deleteCampaign, retryCampaign } from "@/lib/actions";
 import { getCampaignProgress } from "@/lib/stats";
 
 export default function CampaignActions({ campaign }: { campaign: any }) {
@@ -139,6 +139,20 @@ export default function CampaignActions({ campaign }: { campaign: any }) {
                 >
                     <Download className="w-4 h-4" />
                     Excel
+                </button>
+                <button
+                    onClick={async () => {
+                        if (confirm("Retry all FAILED links?")) {
+                            setIsPending(true);
+                            await retryCampaign(campaign.id);
+                            setIsPending(false);
+                        }
+                    }}
+                    disabled={isPending}
+                    className="btn-glass flex items-center justify-center gap-2 text-sm text-amber-400 border-amber-500/20 hover:bg-amber-500/10"
+                >
+                    <RefreshCcw className="w-4 h-4" />
+                    Retry Failures
                 </button>
             </div>
         </>
