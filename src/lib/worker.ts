@@ -21,7 +21,7 @@ export async function processCampaign(campaignId: string) {
     const settings = await getSettings();
     if (!settings.isWorkerOn) return;
 
-    const concurrency = settings.concurrency || 5; // Boost default speed
+    const concurrency = settings.concurrency || 2; // Reduced for VPS stability
     const campaign = await prisma.campaign.findUnique({
         where: { id: campaignId },
         select: { id: true, name: true, fields: true, status: true, headless: true }
@@ -60,7 +60,8 @@ export async function processCampaign(campaignId: string) {
             '--disable-setuid-sandbox',
             '--start-maximized',
             '--disable-blink-features=AutomationControlled',
-            '--window-size=1920,1080'
+            '--window-size=1920,1080',
+            '--disable-dev-shm-usage'
         ],
         defaultViewport: null
     });
@@ -190,11 +191,7 @@ export async function processCampaign(campaignId: string) {
                     if (pageContent.includes("duplicate comment") || pageContent.includes("already said that")) {
                         throw new Error("FAIL_DUPLICATE: Duplicate submission detected");
                     }
-                    // Consider it blocked only if captcha is present and NOT solved
                     if (pageContent.includes("captcha") || pageContent.includes("prove you are human")) {
-                        // We removed the solver, so we just log failure here.
-                        // But to avoid confusion, we can check if we likely solved it? 
-                        // No, without plugin checking, we assume if "captcha" text persists, we failed.
                         throw new Error("FAIL_CAPTCHA: Blocked by CAPTCHA");
                     }
 
@@ -205,12 +202,10 @@ export async function processCampaign(campaignId: string) {
                     // CRITICAL FIX: Handle "Execution context was destroyed"
                     const emsg = error.message || "";
                     if (emsg.includes("Execution context was destroyed") || emsg.includes("Protocol error") || emsg.includes("Target closed")) {
-                        // This usually happens when the "Submit" caused a full page reload/redirect
-                        // which generally means the submission was accepted.
                         await prisma.link.update({ where: { id: link.id }, data: { status: "SUCCESS", error: null } });
                         await logToDB(`SUCCESS (Redirected): ${link.url}`, "SUCCESS");
                     } else {
-                        throw error; // Propagate real errors (Duplicate, Captcha, etc.)
+                        throw error;
                     }
                 }
 
@@ -221,11 +216,11 @@ export async function processCampaign(campaignId: string) {
                     data: { status: "FAILED", error: error.message || "Unknown error" }
                 });
             } finally {
-                if (page) await page.close();
+                if (page) try { await page.close(); } catch (e) { } // Safe close
             }
         }));
     } finally {
-        await browser.close();
+        try { await browser.close(); } catch (e) { } // Safe close
     }
 
     // Auto-Restart Logic
