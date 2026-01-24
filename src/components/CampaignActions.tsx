@@ -1,15 +1,70 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Play, Pause, FileSpreadsheet, Trash2, Loader2 } from "lucide-react";
 import { toggleCampaign, deleteCampaign } from "@/lib/actions";
+import { getCampaignProgress } from "@/lib/stats";
 
 export default function CampaignActions({ campaign }: { campaign: any }) {
     const [isPending, setIsPending] = useState(false);
 
+    // Live Stats State
+    const [stats, setStats] = useState({
+        status: campaign.status,
+        success: campaign.links?.filter((l: any) => l.status === 'SUCCESS').length || 0,
+        total: campaign._count.links || 0
+    });
+
+    // Polling Effect
+    useEffect(() => {
+        let interval: NodeJS.Timeout;
+
+        async function fetchStats() {
+            // Only poll if it was recently running or we think it is running
+            if (stats.status === "RUNNING") {
+                const latest = await getCampaignProgress(campaign.id);
+                if (latest) {
+                    setStats({
+                        status: latest.status,
+                        success: latest.success,
+                        total: latest.total
+                    });
+                }
+            }
+        }
+
+        // Poll every 3 seconds
+        if (stats.status === "RUNNING") {
+            fetchStats(); // Initial fetch
+            interval = setInterval(fetchStats, 3000);
+        }
+
+        return () => clearInterval(interval);
+    }, [stats.status, campaign.id]);
+
+
     async function handleToggle() {
         setIsPending(true);
-        await toggleCampaign(campaign.id, campaign.status);
+        try {
+            // Toggle optimistcally
+            const newStatus = stats.status === "RUNNING" ? "PAUSED" : "RUNNING";
+            await toggleCampaign(campaign.id, stats.status);
+
+            // Force an immediate update
+            const latest = await getCampaignProgress(campaign.id);
+            if (latest) {
+                setStats({
+                    status: latest.status,
+                    success: latest.success,
+                    total: latest.total
+                });
+            } else {
+                setStats(prev => ({ ...prev, status: newStatus }));
+            }
+
+        } catch (e) {
+            console.error(e);
+        }
         setIsPending(false);
     }
 
@@ -28,7 +83,7 @@ export default function CampaignActions({ campaign }: { campaign: any }) {
     return (
         <>
             <div className="flex justify-between items-start mb-6">
-                <StatusBadge status={campaign.status} />
+                <StatusBadge status={stats.status} />
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                         onClick={handleDelete}
@@ -43,18 +98,18 @@ export default function CampaignActions({ campaign }: { campaign: any }) {
             <h3 className="text-xl font-bold mb-2 truncate">{campaign.name}</h3>
             <p className="text-slate-400 text-sm line-clamp-2 mb-6 h-10">{campaign.description || "No description provided."}</p>
 
-            {/* Progress placeholder - in a real app would be dynamic */}
+            {/* Live Progress */}
             <div className="space-y-4 mb-8">
                 <div className="flex justify-between items-center text-sm">
                     <span className="text-slate-500 flex items-center gap-2">Progress</span>
                     <span className="font-mono font-bold text-slate-300">
-                        {campaign.links?.filter((l: any) => l.status === 'SUCCESS').length || 0} / {campaign._count.links}
+                        {stats.success} / {stats.total}
                     </span>
                 </div>
                 <div className="w-full bg-white/5 h-2 rounded-full overflow-hidden">
                     <div
                         className="bg-indigo-500 h-full transition-all duration-1000 shadow-[0_0_10px_rgba(99,102,241,0.5)]"
-                        style={{ width: `${(campaign.links?.filter((l: any) => l.status === 'SUCCESS').length / campaign._count.links * 100) || 0}%` }}
+                        style={{ width: `${(stats.success / (stats.total || 1) * 100)}%` }}
                     />
                 </div>
             </div>
@@ -66,9 +121,9 @@ export default function CampaignActions({ campaign }: { campaign: any }) {
                     className="btn-glass flex items-center justify-center gap-2 text-sm"
                 >
                     {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : (
-                        campaign.status === 'RUNNING' ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />
+                        stats.status === 'RUNNING' ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />
                     )}
-                    {campaign.status === 'RUNNING' ? 'Pause' : 'Start'}
+                    {stats.status === 'RUNNING' ? 'Pause' : 'Start'}
                 </button>
                 <button
                     onClick={handleReport}
@@ -90,7 +145,7 @@ function StatusBadge({ status }: { status: string }) {
         COMPLETED: "text-indigo-400 bg-indigo-400/10 border-indigo-400/20",
     };
     return (
-        <div className={`px-3 py-1 rounded-full text-xs font-bold border ${statusColors[status]}`}>
+        <div className={`px-3 py-1 rounded-full text-xs font-bold border ${statusColors[status] || "text-slate-400 bg-slate-400/10"}`}>
             {status}
         </div>
     );
