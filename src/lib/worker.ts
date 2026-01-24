@@ -1,6 +1,7 @@
 
 import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
+// @ts-ignore
 import RecaptchaPlugin from "puppeteer-extra-plugin-recaptcha";
 import { createCursor } from "ghost-cursor";
 import prisma from "./prisma";
