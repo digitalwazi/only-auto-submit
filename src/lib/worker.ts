@@ -1,8 +1,6 @@
 
 import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
-// @ts-ignore
-import RecaptchaPlugin from "puppeteer-extra-plugin-recaptcha";
 import { createCursor } from "ghost-cursor";
 import prisma from "./prisma";
 import { getSettings } from "./settings";
@@ -10,17 +8,6 @@ import { logToDB } from "./logs";
 
 // 1. Enable Stealth Plugin
 puppeteer.use(StealthPlugin());
-
-// 2. Enable Recaptcha Plugin (Free Audio Solver)
-puppeteer.use(
-    RecaptchaPlugin({
-        provider: {
-            id: '2captcha',
-            token: 'x' // Placeholder: generic provider logic often attempts audio solve if no token
-        },
-        visualFeedback: true // Colorize for debugging if headful
-    })
-);
 
 const USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -100,12 +87,7 @@ export async function processCampaign(campaignId: string) {
                     throw new Error(`Load Timeout or Error: ${e instanceof Error ? e.message : "Unknown"}`);
                 }
 
-                // Attempt to solve CAPTCHAs before filling form
-                try {
-                    await (page as any).solveRecaptchas();
-                } catch (e) {
-                    // Ignore solve errors, proceed to try form
-                }
+                // NO CAPTCHA SOLVER HERE - REMOVED AS REQUESTED
 
                 let fieldFound = false;
                 for (const field of fields) {
@@ -209,7 +191,10 @@ export async function processCampaign(campaignId: string) {
                         throw new Error("FAIL_DUPLICATE: Duplicate submission detected");
                     }
                     // Consider it blocked only if captcha is present and NOT solved
-                    if ((pageContent.includes("captcha") || pageContent.includes("prove you are human")) && !pageContent.includes("solved")) {
+                    if (pageContent.includes("captcha") || pageContent.includes("prove you are human")) {
+                        // We removed the solver, so we just log failure here.
+                        // But to avoid confusion, we can check if we likely solved it? 
+                        // No, without plugin checking, we assume if "captcha" text persists, we failed.
                         throw new Error("FAIL_CAPTCHA: Blocked by CAPTCHA");
                     }
 
