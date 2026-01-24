@@ -34,8 +34,14 @@ async function runWorker() {
         try {
             const time = new Date().toISOString();
             const logMsg = `[${time}] Worker ALIVE - Campaigns found: Unknown(Loop)\n`;
-            fs.appendFileSync('/root/uptime.log', logMsg);
-            console.log("HEARTBEAT WRITTEN to /root/uptime.log");
+
+            const logDir = "./logs";
+            if (!fs.existsSync(logDir)) {
+                fs.mkdirSync(logDir, { recursive: true });
+            }
+
+            fs.appendFileSync(`${logDir}/worker.log`, logMsg);
+            // console.log("HEARTBEAT WRITTEN to logs/worker.log");
         } catch (e) { console.error("Logger failed", e); }
 
         // Wait before next loop

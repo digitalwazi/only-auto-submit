@@ -42,7 +42,28 @@ export async function toggleCampaign(id: string, currentStatus: string) {
     revalidatePath("/");
 }
 
-export async function deleteCampaign(id: string) {
-    await prisma.campaign.delete({ where: { id } });
+await prisma.campaign.delete({ where: { id } });
+revalidatePath("/");
+}
+
+export async function retryCampaign(id: string) {
+    // Reset failed links to PENDING
+    await prisma.link.updateMany({
+        where: {
+            campaignId: id,
+            status: "FAILED"
+        },
+        data: {
+            status: "PENDING",
+            error: null
+        }
+    });
+
+    // Set campaign back to RUNNING
+    await prisma.campaign.update({
+        where: { id },
+        data: { status: "RUNNING" }
+    });
+
     revalidatePath("/");
 }
