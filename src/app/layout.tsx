@@ -6,6 +6,7 @@ import Link from "next/link";
 import CreateCampaignModal from "@/components/CreateCampaignModal";
 
 import AuthGate from "@/components/AuthGate";
+import { WorkerStatus } from "@/components/WorkerStatus";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -34,9 +35,8 @@ export default function RootLayout({
               </h1>
             </div>
 
-            import {WorkerStatus} from "@/components/WorkerStatus";
+            {/* Navigation and Actions */}
 
-            // ... (imports)
 
             <nav className="flex items-center gap-2">
               <NavLink href="/" icon={<LayoutDashboard className="w-4 h-4" />} label="Dashboard" active />
