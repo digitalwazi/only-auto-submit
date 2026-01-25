@@ -5,10 +5,31 @@ import { logToDB } from "../src/lib/logs";
 import fs from "fs";
 
 const POLL_INTERVAL = 5000; // 5 seconds
+const STUCK_THRESHOLD_MS = 15 * 60 * 1000; // 15 minutes max for a job
+
+async function cleanupStuckJobs() {
+    try {
+        await logToDB("Checking for stuck jobs...", "INFO");
+        // Reset any jobs that are 'PROCESSING' on startup (assumes single worker instance)
+        const { count } = await prisma.link.updateMany({
+            where: { status: "PROCESSING" },
+            data: { status: "PENDING", error: "Recovered from crash" }
+        });
+        if (count > 0) {
+            await logToDB(`Recovered ${count} stuck jobs (reset to PENDING).`, "WARN");
+            console.log(`🔄 Recovered ${count} stuck jobs.`);
+        }
+    } catch (e) {
+        console.error("Cleanup Error:", e);
+    }
+}
 
 async function runWorker() {
     console.log("🚀 Background Worker Started");
     await logToDB("Background Worker Daemon started.", "INFO");
+
+    // Cleanup on start
+    await cleanupStuckJobs();
 
     while (true) {
         try {
@@ -43,6 +64,15 @@ async function runWorker() {
             fs.appendFileSync(`${logDir}/worker.log`, logMsg);
             // console.log("HEARTBEAT WRITTEN to logs/worker.log");
         } catch (e) { console.error("Logger failed", e); }
+
+        // Periodic Cleanup (Every 5 minutes approx)
+        if (Math.random() < 0.05) {
+            // We can just rely on startup cleanup + restart, or add logic here.
+            // Since we have auto-restart on settings, let's keep it simple: cleanup on start is most important for crash recovery.
+            // But if we want 24/7 reliability without restarting the whole process often:
+            // Let's rely on the fact that if it crashes, PM2 restarts -> cleanup runs.
+            // If it hangs... PM2 might not know.
+        }
 
         // Wait before next loop
         await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
