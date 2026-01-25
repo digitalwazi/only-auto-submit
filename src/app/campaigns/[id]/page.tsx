@@ -105,6 +105,7 @@ export default async function CampaignDetailsPage({
                                 <th className="p-4 font-bold text-sm text-slate-300">URL</th>
                                 <th className="p-4 font-bold text-sm text-slate-300 w-32">Status</th>
                                 <th className="p-4 font-bold text-sm text-slate-300 w-1/3">Message / Error</th>
+                                <th className="p-4 font-bold text-sm text-slate-300 w-32">Proof</th>
                                 <th className="p-4 font-bold text-sm text-slate-300 w-48 text-right">Last Updated</th>
                             </tr>
                         </thead>
@@ -126,7 +127,27 @@ export default async function CampaignDetailsPage({
                                                 {link.error}
                                             </span>
                                         ) : (
-                                            link.status === 'SUCCESS' ? <span className="text-emerald-500/50">Submission verified</span> : '-'
+                                            link.status === 'SUCCESS' ? (
+                                                <div className="flex flex-col gap-1">
+                                                    <span className="text-emerald-500/50">Submission verified</span>
+                                                    {link.submittedUrl && (
+                                                        <a href={link.submittedUrl} target="_blank" className="text-xs text-indigo-400 hover:underline truncate max-w-[200px]">
+                                                            View Result Link
+                                                        </a>
+                                                    )}
+                                                </div>
+                                            ) : '-'
+                                        )}
+                                    </td>
+                                    <td className="p-4 text-sm">
+                                        {link.screenshotPath && (
+                                            <a
+                                                href={link.screenshotPath}
+                                                target="_blank"
+                                                className="inline-flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 rounded text-xs text-white transition-colors"
+                                            >
+                                                📷 View
+                                            </a>
                                         )}
                                     </td>
                                     <td className="p-4 text-sm text-slate-500 text-right font-mono">

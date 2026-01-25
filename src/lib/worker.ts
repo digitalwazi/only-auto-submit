@@ -5,6 +5,7 @@ import { createCursor } from "ghost-cursor";
 import prisma from "./prisma";
 import { getSettings } from "./settings";
 import { logToDB } from "./logs";
+import fs from "fs";
 
 // 1. Enable Stealth & Recaptcha Plugins
 puppeteer.use(StealthPlugin());
@@ -238,15 +239,40 @@ export async function processBatch() {
                     throw new Error("SKIP_CAPTCHA_BLOCK");
                 }
 
-                // Assume success if we got here without errors
-                await prisma.link.update({ where: { id: link.id }, data: { status: "SUCCESS", error: null } });
+                // --- CAPTURE PROOF (SCREENSHOT & URL) ---
+                const finalUrl = page.url();
+                const screenshotDir = "./public/screenshots";
+                if (!fs.existsSync(screenshotDir)) {
+                    fs.mkdirSync(screenshotDir, { recursive: true });
+                }
+                const screenshotFilename = `proof-${link.id}.webp`;
+                const screenshotPath = `${screenshotDir}/${screenshotFilename}`;
+
+                try {
+                    await page.screenshot({ path: screenshotPath, type: 'webp', quality: 50 });
+                } catch (e) { console.error("Screenshot failed", e); }
+
+                // Save to DB
+                // Path stored is relative to public (e.g., "/screenshots/proof-123.webp")
+                const dbScreenshotPath = `/screenshots/${screenshotFilename}`;
+
+                await prisma.link.update({
+                    where: { id: link.id },
+                    data: {
+                        status: "SUCCESS",
+                        error: null,
+                        submittedUrl: finalUrl,
+                        screenshotPath: dbScreenshotPath
+                    }
+                });
                 await logToDB(`SUCCESS: ${link.url}`, "SUCCESS");
 
             } catch (error: any) {
                 // Check for navigation errors (success redirect can cause these sometimes)
                 const emsg = error.message || "";
                 if (emsg.includes("Execution context was destroyed") || emsg.includes("Protocol error") || emsg.includes("Target closed")) {
-                    await prisma.link.update({ where: { id: link.id }, data: { status: "SUCCESS", error: null } });
+                    // Even on redirect error, try to mark as success if we got far enough, but no screenshot
+                    await prisma.link.update({ where: { id: link.id }, data: { status: "SUCCESS", error: null, submittedUrl: page?.url() || "Redirected" } });
                     await logToDB(`SUCCESS (Redirected): ${link.url}`, "SUCCESS");
                 } else {
                     throw error;
