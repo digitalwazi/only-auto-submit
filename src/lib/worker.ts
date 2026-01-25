@@ -90,32 +90,21 @@ export async function processCampaign(campaignId: string) {
                 const cursor = createCursor(page);
 
                 try {
-                    await page.goto(link.url, { waitUntil: "networkidle2", timeout: 45000 });
+                    await page.goto(link.url, { waitUntil: "networkidle2", timeout: 30000 }); // 30s Timeout (Fail Fast)
                 } catch (e) {
-                    throw new Error(`Load Timeout or Error: ${e instanceof Error ? e.message : "Unknown"}`);
+                    throw new Error(`Load Timeout/Error: ${e instanceof Error ? e.message : "Unknown"}`);
                 }
 
-                // --- SAFE CAPTCHA SOLVER ---
+                // --- FAIL FAST ON CAPTCHA ---
                 try {
                     const { captchas } = await page.findRecaptchas();
-                    if (captchas.length > 0) {
-                        await logToDB(`Captcha detected on ${link.url}. Attempting safe solve...`, "WARN");
-                        // Attempt solve with strict timeout to prevent worker hang
-                        const solveResult = await Promise.race([
-                            page.solveRecaptchas(),
-                            new Promise((_, reject) => setTimeout(() => reject(new Error("Solve Timeout")), 45000))
-                        ]) as any;
-
-                        if (solveResult && solveResult.captchas && solveResult.captchas.some((c: any) => c.isSolved)) {
-                            await logToDB(`Captcha SOLVED for ${link.url}`, "SUCCESS");
-                        } else {
-                            // Don't throw, just log. Maybe we can proceed anyway.
-                            await logToDB(`Captcha solve attempt finished (Outcome uncertain).`, "INFO");
-                        }
+                    if (captchas && captchas.length > 0) {
+                        // User Request: "if unable to fill it by any reason like captha... just leave the link"
+                        throw new Error("SKIP: Captcha Detected (Skipping as requested)");
                     }
                 } catch (e) {
-                    // CRITICAL: Swallow solver errors so worker DOES NOT CRASH
-                    await logToDB(`Solver skipped/failed: ${e instanceof Error ? e.message : "Unknown"}`, "WARN");
+                    if (e instanceof Error && e.message.includes("SKIP")) throw e; // Re-throw our skip signal
+                    // Ignore detection errors, maybe we can still process
                 }
 
                 let fieldFound = false;
