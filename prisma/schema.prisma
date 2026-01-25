@@ -29,6 +29,8 @@ model Link {
   error      String?
   campaignId String
   campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  screenshotPath String? // Path to local screenshot file
+  submittedUrl   String? // Final URL after processing
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
