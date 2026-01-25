@@ -89,13 +89,21 @@ async function runWorker() {
             const lastLog = await prisma.systemLog.findFirst({ orderBy: { id: "desc" } });
             if (lastLog) {
                 const timeDiff = Date.now() - new Date(lastLog.createdAt).getTime();
-                // console.log(`[Watchdog] Time since last log: ${Math.round(timeDiff/1000)}s`); // Debug
 
                 if (timeDiff > 5 * 60 * 1000) { // 5 minutes silence
                     console.error(`💀 WORKER HUNG (${Math.round(timeDiff / 1000)}s silence). Committing suicide...`);
                     await logToDB(`Worker HUNG detected (${Math.round(timeDiff / 1000)}s silence). Forcing restart...`, "ERROR");
                     process.exit(1);
                 }
+            }
+
+            // MEMORY LEAK CHECK (Soft Restart)
+            const memoryUsage = process.memoryUsage().rss / 1024 / 1024;
+            // console.log(`Memory Usage: ${Math.round(memoryUsage)} MB`);
+            if (memoryUsage > 500) { // 500 MB Limit
+                console.log(`⚠️ Memory usage high (${Math.round(memoryUsage)}MB). Performing preventive restart...`);
+                await logToDB(`Preventive Restart: Memory usage high (${Math.round(memoryUsage)}MB).`, "WARN");
+                process.exit(0);
             }
 
             // Also write heartbeat here to be sure
