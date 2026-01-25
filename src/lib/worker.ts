@@ -95,16 +95,28 @@ export async function processCampaign(campaignId: string) {
                     throw new Error(`Load Timeout/Error: ${e instanceof Error ? e.message : "Unknown"}`);
                 }
 
-                // --- FAIL FAST ON CAPTCHA ---
+                // --- FAIL FAST ON CAPTCHA (MANUAL CHECK) ---
                 try {
-                    const { captchas } = await page.findRecaptchas();
-                    if (captchas && captchas.length > 0) {
-                        // User Request: "if unable to fill it by any reason like captha... just leave the link"
-                        throw new Error("SKIP: Captcha Detected (Skipping as requested)");
+                    // Manual Selector Check to avoid Plugin Crashes
+                    const captchaSelectors = [
+                        'iframe[src*="recaptcha"]',
+                        'iframe[src*="captcha"]',
+                        '#g-recaptcha-response',
+                        '.g-recaptcha',
+                        'input[name="recaptcha_response_field"]',
+                        '#captcha'
+                    ];
+
+                    const foundCaptcha = await page.evaluate((selectors) => {
+                        return selectors.some(s => document.querySelector(s));
+                    }, captchaSelectors);
+
+                    if (foundCaptcha) {
+                        throw new Error("SKIP: Captcha Detected (Manual Check)");
                     }
                 } catch (e) {
-                    if (e instanceof Error && e.message.includes("SKIP")) throw e; // Re-throw our skip signal
-                    // Ignore detection errors, maybe we can still process
+                    if (e instanceof Error && e.message.includes("SKIP")) throw e;
+                    // Ignore other errors during check
                 }
 
                 let fieldFound = false;
