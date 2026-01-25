@@ -7,7 +7,6 @@ import { getSettings } from "./settings";
 import { logToDB } from "./logs";
 
 // 1. Enable Stealth & Recaptcha Plugins
-// 1. Enable Stealth & Recaptcha Plugins
 puppeteer.use(StealthPlugin());
 puppeteer.use(
     RecaptchaPlugin({
@@ -24,240 +23,262 @@ const USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/121.0"
 ];
 
-export async function processCampaign(campaignId: string) {
+export async function processBatch() {
     const settings = await getSettings();
-    if (!settings.isWorkerOn) return;
+    if (!settings.isWorkerOn) return { processed: 0, status: "WORKER_OFF" };
 
-    const concurrency = settings.concurrency || 2; // Reduced for VPS stability
-    const campaign = await prisma.campaign.findUnique({
-        where: { id: campaignId },
+    const concurrency = settings.concurrency || 2;
+
+    // Find a RUNNING campaign
+    const campaign = await prisma.campaign.findFirst({
+        where: { status: "RUNNING" },
         select: { id: true, name: true, fields: true, status: true, headless: true }
     });
 
-    if (!campaign || campaign.status !== "RUNNING") return;
+    if (!campaign) return { processed: 0, status: "IDLE" };
 
     // Per-campaign Headless Override
     const isHeadless = campaign.headless !== false;
-
     const fields = JSON.parse(campaign.fields);
+
+    // Get a batch of PENDING links
     const links = await prisma.link.findMany({
-        where: { campaignId, status: "PENDING" },
+        where: { campaignId: campaign.id, status: "PENDING" },
         take: concurrency,
     });
 
     if (links.length === 0) {
+        // Check if finished
         const remaining = await prisma.link.count({
-            where: { campaignId, status: "PENDING" }
+            where: { campaignId: campaign.id, status: "PENDING" }
         });
         if (remaining === 0) {
             await prisma.campaign.update({
-                where: { id: campaignId },
+                where: { id: campaign.id },
                 data: { status: "COMPLETED" }
             });
             await logToDB(`Campaign "${campaign.name}" completed!`, "SUCCESS");
         }
-        return;
+        return { processed: 0, status: "COMPLETED_CAMPAIGN" };
     }
 
-    // Launch Browser
-    const browser = await puppeteer.launch({
-        headless: isHeadless,
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--start-maximized',
-            '--disable-blink-features=AutomationControlled',
-            '--window-size=1920,1080',
-            '--disable-dev-shm-usage'
-        ],
-        defaultViewport: null
-    });
+    // --- FRESH BROWSER PER JOB ARCHITECTURE ---
+    // Instead of one browser for all links, we launch one per link (or small batch).
+    // This is slower but 1000x more stable as it guarantees memory reclamation.
 
-    try {
-        await Promise.all(links.map(async (link) => {
-            let page;
+    // Process links sequentially to allow individual browser management
+    for (const link of links) {
+        let browser = null;
+        let page = null;
+
+        try {
+            // Launch fresh browser for THIS link
+            browser = await puppeteer.launch({
+                headless: isHeadless,
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage', // Critical for VPS
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--single-process', // Use single process to save RAM on low-spec VPS
+                    '--disable-gpu'
+                ],
+                defaultViewport: null
+            });
+
+            // Mark PROCESSING
+            await prisma.link.update({ where: { id: link.id }, data: { status: "PROCESSING", error: null } });
+            await logToDB(`Processing: ${link.url}`, "INFO");
+
+            page = await browser.newPage();
+
+            // Randomize User Agent
+            const randomUA = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+            await page.setUserAgent(randomUA);
+
+            // Initialize Ghost Cursor
+            const cursor = createCursor(page);
+
+            // --- 1. NAVIGATE (FAIL FAST) ---
             try {
-                await prisma.link.update({ where: { id: link.id }, data: { status: "PROCESSING", error: null } });
-                await logToDB(`Processing: ${link.url}`, "INFO");
+                await page.goto(link.url, { waitUntil: "domcontentloaded", timeout: 15000 }); // 15s Timeout, domcontentloaded is faster
+            } catch (e) {
+                throw new Error(`TIMEOUT: Site took too long`);
+            }
 
-                page = await browser.newPage();
+            // --- 2. CAPTCHA CHECK (FAIL FAST) ---
+            try {
+                const captchaSelectors = [
+                    'iframe[src*="recaptcha"]',
+                    'iframe[src*="captcha"]',
+                    '#g-recaptcha-response',
+                    '.g-recaptcha',
+                    'input[name="recaptcha_response_field"]',
+                    '#captcha',
+                    '[class*="captcha"]'
+                ];
 
-                // Randomize User Agent
-                const randomUA = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
-                await page.setUserAgent(randomUA);
+                // Quick scan - 1s timeout equivalent (evaluate is instant)
+                const foundCaptcha = await page.evaluate((selectors) => {
+                    return selectors.some(s => document.querySelector(s));
+                }, captchaSelectors);
 
-                // Initialize Ghost Cursor
-                const cursor = createCursor(page);
+                if (foundCaptcha) {
+                    throw new Error("SKIP_CAPTCHA");
+                }
+            } catch (e: any) {
+                if (e.message === "SKIP_CAPTCHA") throw e;
+            }
+
+            // --- 3. FILL FORM ---
+            let fieldFound = false;
+            for (const field of fields) {
+                const searchTerms = [field.name, field.label];
+                // Enhance search terms based on field type names
+                if (field.name.toLowerCase().includes("name")) searchTerms.push("author", "firstname", "first_name", "last_name", "user", "nick");
+                if (field.name.toLowerCase().includes("message")) searchTerms.push("comment", "description", "body", "details", "text", "msg");
+                if (field.name.toLowerCase().includes("email")) searchTerms.push("mail", "e-mail", "contact");
+
+                // Broad selectors
+                const selectors = searchTerms.flatMap(term => [
+                    `input[name*="${term}" i]`,
+                    `input[id*="${term}" i]`,
+                    `input[placeholder*="${term}" i]`,
+                    `textarea[name*="${term}" i]`,
+                    `textarea[id*="${term}" i]`,
+                    `textarea[placeholder*="${term}" i]`
+                ]).join(", ");
 
                 try {
-                    await page.goto(link.url, { waitUntil: "networkidle2", timeout: 30000 }); // 30s Timeout (Fail Fast)
-                } catch (e) {
-                    throw new Error(`Load Timeout/Error: ${e instanceof Error ? e.message : "Unknown"}`);
-                }
+                    const element = await page.waitForSelector(selectors, { timeout: 2000 }); // Fast 2s search
+                    if (element) {
+                        if (!fieldFound) await cursor.move(element); // Move cursor to first element found
 
-                // --- FAIL FAST ON CAPTCHA (MANUAL CHECK) ---
-                try {
-                    // Manual Selector Check to avoid Plugin Crashes
-                    const captchaSelectors = [
-                        'iframe[src*="recaptcha"]',
-                        'iframe[src*="captcha"]',
-                        '#g-recaptcha-response',
-                        '.g-recaptcha',
-                        'input[name="recaptcha_response_field"]',
-                        '#captcha'
-                    ];
-
-                    const foundCaptcha = await page.evaluate((selectors) => {
-                        return selectors.some(s => document.querySelector(s));
-                    }, captchaSelectors);
-
-                    if (foundCaptcha) {
-                        throw new Error("SKIP: Captcha Detected (Manual Check)");
-                    }
-                } catch (e) {
-                    if (e instanceof Error && e.message.includes("SKIP")) throw e;
-                    // Ignore other errors during check
-                }
-
-                let fieldFound = false;
-                for (const field of fields) {
-                    const searchTerms = [field.name, field.label];
-                    if (field.name.toLowerCase().includes("name")) searchTerms.push("author", "firstname", "first_name", "last_name", "user");
-                    if (field.name.toLowerCase().includes("message")) searchTerms.push("comment", "description", "body", "details");
-                    if (field.name.toLowerCase().includes("email")) searchTerms.push("mail", "e-mail");
-
-                    const selectors = searchTerms.flatMap(term => [
-                        `input[name*="${term}" i]`,
-                        `input[id*="${term}" i]`,
-                        `input[placeholder*="${term}" i]`,
-                        `textarea[name*="${term}" i]`,
-                        `textarea[id*="${term}" i]`,
-                        `textarea[placeholder*="${term}" i]`
-                    ]).join(", ");
-
-                    try {
-                        const element = await page.waitForSelector(selectors, { timeout: 3000 });
-                        if (element) {
-                            await cursor.move(element);
-                            try {
-                                await element.click({ clickCount: 3 });
-                                await element.press('Backspace');
-                            } catch (e) { }
-
-                            // Optimized Human-like typing (Faster)
-                            await element.type(field.value, { delay: Math.floor(Math.random() * 10) + 5 });
-                            fieldFound = true;
-                        }
-                    } catch (e) { }
-                }
-
-                if (!fieldFound) {
-                    throw new Error("No matching form fields found");
-                }
-
-                // Submit Logic
-                let submitted = false;
-                const textTargets = ["Submit", "Send", "Post", "Contact", "Message", "Go", "Comment"];
-
-                for (const text of textTargets) {
-                    if (submitted) break;
-                    try {
-                        const xpath = `//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${text.toLowerCase()}')] | //input[@type='submit' and contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${text.toLowerCase()}')]`;
-                        const elements = await page.$$(`xpath/${xpath}`);
-                        for (const element of elements) {
-                            try {
-                                if (await element.boundingBox()) {
-                                    await cursor.click(element);
-                                    submitted = true;
-                                    await new Promise(r => setTimeout(r, 1000)); // Reduced wait
-                                    break;
-                                }
-                            } catch (e) { }
-                        }
-                    } catch (e) { }
-                }
-
-                if (!submitted) {
-                    const submitSelectors = [
-                        'button[type="submit"]',
-                        'input[type="submit"]',
-                        'button[class*="submit" i]',
-                        'button[class*="send" i]',
-                        'button[class*="btn-primary" i]',
-                        'button:not([type="button"]):not([type="reset"])',
-                    ];
-
-                    for (const selector of submitSelectors) {
                         try {
-                            const btn = await page.$(selector);
-                            if (btn && await btn.boundingBox()) {
-                                await cursor.click(btn);
+                            await element.click({ clickCount: 3 }); // Select all
+                            await element.press('Backspace');   // Clear
+                        } catch (e) { }
+
+                        await element.type(field.value, { delay: 5 }); // Fast typing
+                        fieldFound = true;
+                    }
+                } catch (e) { }
+            }
+
+            if (!fieldFound) {
+                throw new Error("SKIP_NO_FIELDS"); // No matching fields found
+            }
+
+            // --- 4. SUBMIT ---
+            let submitted = false;
+            const textTargets = ["Submit", "Send", "Post", "Contact", "Message", "Go", "Comment", "Reply"];
+
+            // Try clicking buttons with specific text
+            for (const text of textTargets) {
+                if (submitted) break;
+                try {
+                    const xpath = `//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${text.toLowerCase()}')] | //input[@type='submit' and contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${text.toLowerCase()}')]`;
+                    const elements = await page.$$(`xpath/${xpath}`);
+                    for (const element of elements) {
+                        try {
+                            if (await element.boundingBox()) {
+                                await cursor.click(element);
                                 submitted = true;
-                                await new Promise(r => setTimeout(r, 2000));
+                                await new Promise(r => setTimeout(r, 1000));
                                 break;
                             }
                         } catch (e) { }
                     }
-                }
+                } catch (e) { }
+            }
 
-                // Fallback JS Submit
-                if (!submitted) {
-                    submitted = await page.evaluate(() => {
-                        const form = document.querySelector('form');
-                        if (form) {
-                            form.requestSubmit ? form.requestSubmit() : form.submit();
-                            return true;
+            // Try generic submit buttons
+            if (!submitted) {
+                const submitSelectors = [
+                    'button[type="submit"]',
+                    'input[type="submit"]',
+                    'button[class*="submit" i]',
+                    'button[class*="btn-primary" i]',
+                ];
+                for (const selector of submitSelectors) {
+                    try {
+                        const btn = await page.$(selector);
+                        if (btn && await btn.boundingBox()) {
+                            await cursor.click(btn);
+                            submitted = true;
+                            await new Promise(r => setTimeout(r, 1000));
+                            break;
                         }
-                        return false;
-                    });
-                    await new Promise(r => setTimeout(r, 2000));
+                    } catch (e) { }
+                }
+            }
+
+            // JS Force Submit
+            if (!submitted) {
+                submitted = await page.evaluate(() => {
+                    const form = document.querySelector('form');
+                    if (form) {
+                        form.requestSubmit ? form.requestSubmit() : form.submit();
+                        return true;
+                    }
+                    return false;
+                });
+                await new Promise(r => setTimeout(r, 1500));
+            }
+
+            // --- 5. CHECK SUCCESS ---
+            try {
+                const pageContent = (await page.content()).toLowerCase();
+
+                if (pageContent.includes("duplicate") || pageContent.includes("already said that")) {
+                    throw new Error("SKIP_DUPLICATE");
+                }
+                if (pageContent.includes("captcha") || pageContent.includes("prove you are human")) {
+                    throw new Error("SKIP_CAPTCHA_BLOCK");
                 }
 
-                // --- VALIDATION AND ERROR HANDLING ---
-                try {
-                    const pageContent = (await page.content()).toLowerCase();
-
-                    if (pageContent.includes("duplicate comment") || pageContent.includes("already said that")) {
-                        throw new Error("FAIL_DUPLICATE: Duplicate submission detected");
-                    }
-                    if (pageContent.includes("captcha") || pageContent.includes("prove you are human")) {
-                        throw new Error("FAIL_CAPTCHA: Blocked by CAPTCHA");
-                    }
-
-                    await prisma.link.update({ where: { id: link.id }, data: { status: "SUCCESS", error: null } });
-                    await logToDB(`SUCCESS: ${link.url}`, "SUCCESS");
-
-                } catch (error: any) {
-                    // CRITICAL FIX: Handle "Execution context was destroyed"
-                    const emsg = error.message || "";
-                    if (emsg.includes("Execution context was destroyed") || emsg.includes("Protocol error") || emsg.includes("Target closed")) {
-                        await prisma.link.update({ where: { id: link.id }, data: { status: "SUCCESS", error: null } });
-                        await logToDB(`SUCCESS (Redirected): ${link.url}`, "SUCCESS");
-                    } else {
-                        throw error;
-                    }
-                }
+                // Assume success if we got here without errors
+                await prisma.link.update({ where: { id: link.id }, data: { status: "SUCCESS", error: null } });
+                await logToDB(`SUCCESS: ${link.url}`, "SUCCESS");
 
             } catch (error: any) {
-                await logToDB(`FAILED: ${link.url} - ${error.message || "Unknown error"}`, "ERROR");
-                await prisma.link.update({
-                    where: { id: link.id },
-                    data: { status: "FAILED", error: error.message || "Unknown error" }
-                });
-            } finally {
-                if (page) try { await page.close(); } catch (e) { } // Safe close
+                // Check for navigation errors (success redirect can cause these sometimes)
+                const emsg = error.message || "";
+                if (emsg.includes("Execution context was destroyed") || emsg.includes("Protocol error") || emsg.includes("Target closed")) {
+                    await prisma.link.update({ where: { id: link.id }, data: { status: "SUCCESS", error: null } });
+                    await logToDB(`SUCCESS (Redirected): ${link.url}`, "SUCCESS");
+                } else {
+                    throw error;
+                }
             }
-        }));
-    } finally {
-        try { await browser.close(); } catch (e) { } // Safe close
-    }
 
-    // Auto-Restart Logic
-    if (settings.autoRestartInterval > 0) {
-        const uptimeMinutes = process.uptime() / 60;
-        if (uptimeMinutes > settings.autoRestartInterval) {
-            await logToDB(`Auto-restart triggered after ${Math.round(uptimeMinutes)} minutes.`, "WARN");
-            process.exit(0);
+        } catch (error: any) {
+            // Categorize Errors
+            let status = "FAILED";
+            const msg = error.message || "Unknown error";
+
+            if (msg.includes("SKIP_CAPTCHA")) {
+                await logToDB(`Skipped (Captcha): ${link.url}`, "WARN");
+            } else if (msg.includes("SKIP_NO_FIELDS")) {
+                await logToDB(`Skipped (No Fields): ${link.url}`, "WARN");
+            } else if (msg.includes("TIMEOUT")) {
+                await logToDB(`Timeout: ${link.url}`, "WARN");
+            } else {
+                await logToDB(`Failed: ${link.url} - ${msg}`, "ERROR");
+            }
+
+            await prisma.link.update({
+                where: { id: link.id },
+                data: { status: status, error: msg }
+            });
+
+        } finally {
+            // FORCE KILL BROWSER AFTER EVERY LINK
+            if (page) try { await page.close(); } catch (e) { }
+            if (browser) try { await browser.close(); } catch (e) { }
         }
-    }
+    } // End Loop
+
+    return { processed: links.length, status: "ACTIVE" };
 }
