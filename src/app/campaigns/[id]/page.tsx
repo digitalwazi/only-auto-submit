@@ -142,7 +142,7 @@ export default async function CampaignDetailsPage({
                                     <td className="p-4 text-sm">
                                         {link.screenshotPath && (
                                             <a
-                                                href={link.screenshotPath}
+                                                href={`/api${link.screenshotPath}`}
                                                 target="_blank"
                                                 className="inline-flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 rounded text-xs text-white transition-colors"
                                             >
