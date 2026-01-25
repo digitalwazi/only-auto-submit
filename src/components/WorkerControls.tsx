@@ -73,6 +73,20 @@ export default function WorkerControls() {
         setSaving(false);
     }
 
+    async function handleHardReset() {
+        if (!confirm("⚠️ HARD RESET: This will kill all Chrome processes and force-restart the worker daemon. Use only if 'Stuck'. Continue?")) return;
+        setRestarting(true);
+        try {
+            await fetch('/api/worker/hard-reset', { method: 'POST' });
+            alert("Hard Reset Triggered. Verification takes ~30s.");
+        } catch (e) {
+            alert("Failed to trigger reset.");
+        }
+        setTimeout(() => {
+            window.location.reload();
+        }, 5000);
+    }
+
     if (loading) return <div className="animate-pulse h-20 bg-white/5 rounded-xl"></div>;
 
     return (
@@ -145,14 +159,24 @@ export default function WorkerControls() {
                 </div>
 
                 {/* Manual Restart */}
-                <button
-                    onClick={handleRestart}
-                    disabled={restarting}
-                    className="w-full flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white py-2 rounded-lg text-xs font-medium transition-all group"
-                >
-                    <RefreshCw className={`w-3 h-3 ${restarting ? "animate-spin" : "group-hover:rotate-180 transition-transform duration-500"}`} />
-                    {restarting ? "Restarting Server..." : "Force Restart Server"}
-                </button>
+                <div className="flex gap-2">
+                    <button
+                        onClick={handleRestart}
+                        disabled={restarting}
+                        className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white py-2 rounded-lg text-xs font-medium transition-all group"
+                    >
+                        <RefreshCw className={`w-3 h-3 ${restarting ? "animate-spin" : "group-hover:rotate-180 transition-transform duration-500"}`} />
+                        {restarting ? "Restarting..." : "Soft Restart"}
+                    </button>
+                    <button
+                        onClick={handleHardReset}
+                        disabled={restarting}
+                        className="flex-1 flex items-center justify-center gap-2 bg-red-900/20 hover:bg-red-900/40 text-red-400 hover:text-red-300 py-2 rounded-lg text-xs font-medium transition-all border border-red-500/10"
+                    >
+                        <Power className="w-3 h-3" />
+                        Hard Reset
+                    </button>
+                </div>
 
                 <p className="text-[10px] text-slate-500 text-center">
                     Higher threads = faster speed. Restart if memory usage gets high.
