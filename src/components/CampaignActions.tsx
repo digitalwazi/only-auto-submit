@@ -142,7 +142,7 @@ export default function CampaignActions({ campaign }: { campaign: any }) {
                 </button>
                 <button
                     onClick={async () => {
-                        if (confirm("Retry all FAILED links?")) {
+                        if (confirm("Retry FAILED links?")) {
                             setIsPending(true);
                             await retryCampaign(campaign.id);
                             setIsPending(false);
@@ -152,7 +152,25 @@ export default function CampaignActions({ campaign }: { campaign: any }) {
                     className="btn-glass flex items-center justify-center gap-2 text-sm text-amber-400 border-amber-500/20 hover:bg-amber-500/10"
                 >
                     <RefreshCcw className="w-4 h-4" />
-                    Retry Failures
+                    Retry Errors
+                </button>
+                <button
+                    onClick={async () => {
+                        setIsPending(true);
+                        try {
+                            const res = await fetch(`/api/campaigns/${campaign.id}/resume`, { method: "POST" });
+                            const data = await res.json();
+                            alert(data.message || "Resume signal sent.");
+                        } catch (e) {
+                            alert("Failed to send resume signal");
+                        }
+                        setIsPending(false);
+                    }}
+                    disabled={isPending}
+                    className="col-span-2 btn-glass flex items-center justify-center gap-2 text-sm text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/10 font-bold"
+                >
+                    <Play className="w-4 h-4 fill-current" />
+                    Force Resume (Unstuck)
                 </button>
             </div>
         </>

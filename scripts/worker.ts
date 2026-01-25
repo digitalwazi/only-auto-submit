@@ -66,12 +66,9 @@ async function runWorker() {
         } catch (e) { console.error("Logger failed", e); }
 
         // Periodic Cleanup (Every 5 minutes approx)
-        if (Math.random() < 0.05) {
-            // We can just rely on startup cleanup + restart, or add logic here.
-            // Since we have auto-restart on settings, let's keep it simple: cleanup on start is most important for crash recovery.
-            // But if we want 24/7 reliability without restarting the whole process often:
-            // Let's rely on the fact that if it crashes, PM2 restarts -> cleanup runs.
-            // If it hangs... PM2 might not know.
+        if (Date.now() % 300000 < POLL_INTERVAL * 2) {
+            console.log("⏰ Running Periodic Watchdog...");
+            await cleanupStuckJobs();
         }
 
         // Wait before next loop

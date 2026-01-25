@@ -13,12 +13,20 @@ const conn = new Client();
 conn.on('ready', () => {
     console.log('Client :: ready');
     const cmd = `
-        echo "=== BUILD ID ==="; cat /root/auto-submitter/.next/BUILD_ID || echo "MISSING";
-        echo "=== PM2 STATUS ==="; pm2 status;
-        echo "=== PM2 LOGS ==="; pm2 logs next-app --lines 20 --nostream;
-        echo "=== WORKER LOG ==="; tail -n 5 /root/auto-submitter/logs/worker.log || echo "No worker log";
-        echo "=== LOCAL CURL ==="; curl -I http://localhost:3000 || echo "Curl failed";
+        echo "=== STARTING WORKER (ID 2) ===";
+        pm2 restart 2;
+        pm2 save;
+        
+        echo "=== WAITING FOR STARTUP ===";
+        sleep 5;
+        
+        echo "=== CHECKING STATUS ===";
+        pm2 status 2;
+        
+        echo "=== CHECKING LOGS ===";
+        pm2 logs 2 --lines 20 --nostream;
     `;
+
     conn.exec(cmd, (err, stream) => {
         if (err) throw err;
         stream.on('close', (code, signal) => {
@@ -26,6 +34,8 @@ conn.on('ready', () => {
             conn.end();
         }).on('data', (data) => {
             process.stdout.write(data);
+        }).stderr.on('data', (data) => {
+            process.stderr.write(data);
         });
     });
 }).connect(config);

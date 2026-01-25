@@ -13,12 +13,21 @@ const conn = new Client();
 conn.on('ready', () => {
     console.log('Client :: ready');
     const cmd = `
-        echo "=== BUILD ID ==="; cat /root/auto-submitter/.next/BUILD_ID || echo "MISSING";
-        echo "=== PM2 STATUS ==="; pm2 status;
-        echo "=== PM2 LOGS ==="; pm2 logs next-app --lines 20 --nostream;
-        echo "=== WORKER LOG ==="; tail -n 5 /root/auto-submitter/logs/worker.log || echo "No worker log";
-        echo "=== LOCAL CURL ==="; curl -I http://localhost:3000 || echo "Curl failed";
+        cd /root/only-auto-submit;
+        echo "=== NODE_ENV ===";
+        echo $NODE_ENV;
+        
+        echo "=== TSX CHECK ===";
+        ls -l node_modules/.bin/tsx || echo "tsx binary not found";
+        ls -l node_modules/tsx || echo "tsx package not found";
+        
+        echo "=== NPM CONFIG ===";
+        npm config get production;
+        
+        echo "=== WORKER PM2 PROCESS ===";
+        pm2 describe worker-daemon | grep "script";
     `;
+
     conn.exec(cmd, (err, stream) => {
         if (err) throw err;
         stream.on('close', (code, signal) => {
@@ -26,6 +35,8 @@ conn.on('ready', () => {
             conn.end();
         }).on('data', (data) => {
             process.stdout.write(data);
+        }).stderr.on('data', (data) => {
+            process.stderr.write(data);
         });
     });
 }).connect(config);
