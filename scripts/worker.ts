@@ -1,5 +1,5 @@
 
-import { processCampaign } from "../src/lib/worker";
+import { processBatch } from "../src/lib/worker";
 import prisma from "../src/lib/prisma";
 import { logToDB } from "../src/lib/logs";
 import fs from "fs";
@@ -119,16 +119,15 @@ async function runWorker() {
     while (true) {
         try {
             // Find running campaigns
-            const campaigns = await prisma.campaign.findMany({
-                where: { status: "RUNNING" },
-                select: { id: true, name: true }
-            });
+            // Process a batch of links (Worker "Immortal" Mode)
+            // The library now handles finding the campaign and processing a batch
+            const result = await processBatch();
 
-            if (campaigns.length > 0) {
-                // console.log(`found ${campaigns.length} active campaigns.`);
-                for (const campaign of campaigns) {
-                    await processCampaign(campaign.id);
-                }
+            if (result.status === "IDLE") {
+                // No active campaigns or no pending links
+                // console.log("No work found.");
+            } else if (result.status === "WORKER_OFF") {
+                console.log("Worker is OFF in settings.");
             }
         } catch (error) {
             console.error("Worker Error:", error);
