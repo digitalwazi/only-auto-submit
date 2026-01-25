@@ -31,6 +31,22 @@ async function runWorker() {
     // Cleanup on start
     await cleanupStuckJobs();
 
+    // Independent Watchdog (Runs every 2 minutes)
+    setInterval(async () => {
+        try {
+            console.log("⏰ Running Watchdog Check...");
+            await cleanupStuckJobs();
+
+            // Also write heartbeat here to be sure
+            const time = new Date().toISOString();
+            const logMsg = `[${time}] Watchdog ALIVE\n`;
+            const logDir = "./logs";
+            if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+            fs.appendFileSync(`${logDir}/worker.log`, logMsg);
+
+        } catch (e) { console.error("Watchdog Failed", e); }
+    }, 2 * 60 * 1000);
+
     while (true) {
         try {
             // Find running campaigns
@@ -65,11 +81,7 @@ async function runWorker() {
             // console.log("HEARTBEAT WRITTEN to logs/worker.log");
         } catch (e) { console.error("Logger failed", e); }
 
-        // Periodic Cleanup (Every 5 minutes approx)
-        if (Date.now() % 300000 < POLL_INTERVAL * 2) {
-            console.log("⏰ Running Periodic Watchdog...");
-            await cleanupStuckJobs();
-        }
+
 
         // Wait before next loop
         await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
