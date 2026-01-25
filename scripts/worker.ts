@@ -75,6 +75,17 @@ async function runWorker() {
             console.log("⏰ Running Watchdog Check...");
             await cleanupStuckJobs();
 
+            // LIVENESS CHECK: If no new logs in DB for 10 minutes, assume HUNG and restart.
+            const lastLog = await prisma.systemLog.findFirst({ orderBy: { id: "desc" } });
+            if (lastLog) {
+                const timeDiff = Date.now() - new Date(lastLog.createdAt).getTime();
+                if (timeDiff > 10 * 60 * 1000) { // 10 minutes silence
+                    console.error("💀 WORKER HUNG (No logs for 10m). Committing suicide to force restart...");
+                    await logToDB("Worker HUNG detected. Forcing restart...", "ERROR");
+                    process.exit(1);
+                }
+            }
+
             // Also write heartbeat here to be sure
             const time = new Date().toISOString();
             const logMsg = `[${time}] Watchdog ALIVE\n`;
