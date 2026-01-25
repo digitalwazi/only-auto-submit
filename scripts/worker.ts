@@ -3,6 +3,9 @@ import { processCampaign } from "../src/lib/worker";
 import prisma from "../src/lib/prisma";
 import { logToDB } from "../src/lib/logs";
 import fs from "fs";
+import { exec } from "child_process";
+import { promisify } from "util";
+const execAsync = promisify(exec);
 
 const POLL_INTERVAL = 5000; // 5 seconds
 const STUCK_THRESHOLD_MS = 15 * 60 * 1000; // 15 minutes max for a job
@@ -66,6 +69,13 @@ async function runWorker() {
     console.log("🚀 Background Worker Started");
     await logToDB("Background Worker Daemon started.", "INFO");
 
+    // Cleanup zombies (chrome) first
+    try {
+        console.log("🧹 Killing zombie chrome processes...");
+        await execAsync("pkill -f chrome || true");
+        await execAsync("pkill -f chromium || true");
+    } catch (e) { console.error("Zombie kill failed", e); }
+
     // Cleanup on start
     await cleanupStuckJobs();
 
@@ -75,13 +85,15 @@ async function runWorker() {
             console.log("⏰ Running Watchdog Check...");
             await cleanupStuckJobs();
 
-            // LIVENESS CHECK: If no new logs in DB for 10 minutes, assume HUNG and restart.
+            // LIVENESS CHECK: If no new logs in DB for 5 minutes (reduced), assume HUNG.
             const lastLog = await prisma.systemLog.findFirst({ orderBy: { id: "desc" } });
             if (lastLog) {
                 const timeDiff = Date.now() - new Date(lastLog.createdAt).getTime();
-                if (timeDiff > 10 * 60 * 1000) { // 10 minutes silence
-                    console.error("💀 WORKER HUNG (No logs for 10m). Committing suicide to force restart...");
-                    await logToDB("Worker HUNG detected. Forcing restart...", "ERROR");
+                // console.log(`[Watchdog] Time since last log: ${Math.round(timeDiff/1000)}s`); // Debug
+
+                if (timeDiff > 5 * 60 * 1000) { // 5 minutes silence
+                    console.error(`💀 WORKER HUNG (${Math.round(timeDiff / 1000)}s silence). Committing suicide...`);
+                    await logToDB(`Worker HUNG detected (${Math.round(timeDiff / 1000)}s silence). Forcing restart...`, "ERROR");
                     process.exit(1);
                 }
             }
