@@ -8,12 +8,10 @@ import { logToDB } from "./logs";
 
 // 1. Enable Stealth & Recaptcha Plugins
 puppeteer.use(StealthPlugin());
-puppeteer.use(
-    RecaptchaPlugin({
-        provider: { id: "2captcha", token: "NO_TOKEN_NEEDED_FOR_AUDIO" }, // We rely on built-in audio solver fallback if available, or just detection
-        visualFeedback: true,
-    })
-);
+// 1. Enable Stealth Plugin
+puppeteer.use(StealthPlugin());
+// Recaptcha Plugin removed to prevent "WRONG_USER_KEY" errors.
+// Re-enable only if a valid 2captcha key is provided.
 
 const USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
