@@ -314,11 +314,17 @@ export async function processBatch() {
                 });
 
             } finally {
-                // FORCE KILL BROWSER AFTER EVERY LINK
+                // Close Page, keep Browser open for next link in batch
                 if (page) try { await page.close(); } catch (e) { }
-                if (browser) try { await browser.close(); } catch (e) { }
             }
-        } // End Loop
+        } // End Link Loop
 
-        return { processed: links.length, status: "ACTIVE" };
+    } catch (e) {
+        console.error("Critical Worker Error:", e);
+    } finally {
+        // Close Browser after batch
+        if (browser) try { await browser.close(); } catch (e) { }
     }
+
+    return { processed: links.length, status: "ACTIVE" };
+}
