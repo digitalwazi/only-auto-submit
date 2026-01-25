@@ -114,7 +114,7 @@ export async function processBatch() {
 
                 // --- 1. NAVIGATE (FAIL FAST) ---
                 try {
-                    await page.goto(link.url, { waitUntil: "domcontentloaded", timeout: 15000 }); // 15s Timeout, domcontentloaded is faster
+                    await page.goto(link.url, { waitUntil: "domcontentloaded", timeout: 8000 }); // 8s Timeout (User requested "immediately")
                 } catch (e) {
                     throw new Error(`TIMEOUT: Site took too long`);
                 }
