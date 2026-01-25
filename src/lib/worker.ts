@@ -85,7 +85,8 @@ export async function processBatch() {
                     '--single-process', // Use single process to save RAM on low-spec VPS
                     '--disable-gpu'
                 ],
-                defaultViewport: null
+                defaultViewport: null,
+                protocolTimeout: 120000 // 2 Minutes (Fix for Runtime.callFunctionOn timed out)
             });
 
             // Mark PROCESSING
