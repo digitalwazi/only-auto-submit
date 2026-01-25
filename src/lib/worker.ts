@@ -233,7 +233,10 @@ export async function processBatch() {
                 const pageContent = (await page.content()).toLowerCase();
 
                 if (pageContent.includes("duplicate") || pageContent.includes("already said that")) {
-                    throw new Error("SKIP_DUPLICATE");
+                    // User requested "Blind Submit" - if it says duplicate, it means we (or someone) executed it. 
+                    // Treat as SUCCESS.
+                    console.log("Duplicate detected - marking as SUCCESS per user request.");
+                    // Fall through to success capture
                 }
                 if (pageContent.includes("captcha") || pageContent.includes("prove you are human")) {
                     throw new Error("SKIP_CAPTCHA_BLOCK");
