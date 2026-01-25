@@ -34,13 +34,18 @@ export default function RootLayout({
               </h1>
             </div>
 
+            import {WorkerStatus} from "@/components/WorkerStatus";
+
+            // ... (imports)
+
             <nav className="flex items-center gap-2">
               <NavLink href="/" icon={<LayoutDashboard className="w-4 h-4" />} label="Dashboard" active />
               <NavLink href="/reports" icon={<BarChart3 className="w-4 h-4" />} label="Reports" />
               <NavLink href="/settings" icon={<Settings className="w-4 h-4" />} label="Settings" />
             </nav>
 
-            <div>
+            <div className="flex items-center gap-4">
+              <WorkerStatus />
               <CreateCampaignModal />
             </div>
           </header>
