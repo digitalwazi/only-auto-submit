@@ -10,15 +10,53 @@ const STUCK_THRESHOLD_MS = 15 * 60 * 1000; // 15 minutes max for a job
 async function cleanupStuckJobs() {
     try {
         await logToDB("Checking for stuck jobs...", "INFO");
-        // Reset any jobs that are 'PROCESSING' on startup (assumes single worker instance)
-        const { count } = await prisma.link.updateMany({
+
+        const stuckLinks = await prisma.link.findMany({
             where: { status: "PROCESSING" },
-            data: { status: "PENDING", error: "Recovered from crash" }
+            select: { id: true, url: true }
         });
-        if (count > 0) {
-            await logToDB(`Recovered ${count} stuck jobs (reset to PENDING).`, "WARN");
-            console.log(`🔄 Recovered ${count} stuck jobs.`);
+
+        if (stuckLinks.length === 0) return;
+
+        // Try to find if one of these caused a crash
+        const lastLog = await prisma.systemLog.findFirst({
+            where: { message: { startsWith: "Processing:" } },
+            orderBy: { id: "desc" }
+        });
+
+        let crashCulpritId = null;
+        if (lastLog) {
+            const lastUrl = lastLog.message.replace("Processing: ", "").trim();
+            const culprit = stuckLinks.find(l => l.url === lastUrl);
+            // Verify the log is recent (within 20 mins) to avoid false positives from old logs
+            const logTime = new Date(lastLog.createdAt).getTime();
+            if (culprit && (Date.now() - logTime < 20 * 60 * 1000)) {
+                crashCulpritId = culprit.id;
+            }
         }
+
+        // 1. Reset innocent links
+        const innocentIds = stuckLinks.filter(l => l.id !== crashCulpritId).map(l => l.id);
+        if (innocentIds.length > 0) {
+            await prisma.link.updateMany({
+                where: { id: { in: innocentIds } },
+                data: { status: "PENDING", error: "Recovered from crash (Safe Retry)" }
+            });
+            await logToDB(`Recovered ${innocentIds.length} stuck jobs (reset to PENDING).`, "WARN");
+            console.log(`🔄 Recovered ${innocentIds.length} stuck jobs.`);
+        }
+
+        // 2. Fail the culprit
+        if (crashCulpritId) {
+            const culprit = stuckLinks.find(l => l.id === crashCulpritId);
+            await prisma.link.update({
+                where: { id: crashCulpritId },
+                data: { status: "FAILED", error: "CRASH DETECTED: Worker died while processing this link." }
+            });
+            await logToDB(`MARKED FAILED: ${culprit?.url} (Caused Worker Crash)`, "ERROR");
+            console.log(`❌ BLOCKING CRASH CULPRIT: ${culprit?.url}`);
+        }
+
     } catch (e) {
         console.error("Cleanup Error:", e);
     }
