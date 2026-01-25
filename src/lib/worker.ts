@@ -7,11 +7,14 @@ import { getSettings } from "./settings";
 import { logToDB } from "./logs";
 
 // 1. Enable Stealth & Recaptcha Plugins
+// 1. Enable Stealth & Recaptcha Plugins
 puppeteer.use(StealthPlugin());
-// 1. Enable Stealth Plugin
-puppeteer.use(StealthPlugin());
-// Recaptcha Plugin removed to prevent "WRONG_USER_KEY" errors.
-// Re-enable only if a valid 2captcha key is provided.
+puppeteer.use(
+    RecaptchaPlugin({
+        provider: { id: "2captcha", token: "DISABLED" },
+        visualFeedback: true,
+    })
+);
 
 const USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
