@@ -13,11 +13,11 @@ const config = {
 const tasks = [
     {
         local: path.join(__dirname, 'worker.ts'),
-        remote: '/root/only-auto-submit/scripts/worker.ts'
+        remote: '/root/auto-submitter/scripts/worker.ts'
     },
     {
         local: path.join(__dirname, '../src/lib/worker.ts'),
-        remote: '/root/only-auto-submit/src/lib/worker.ts'
+        remote: '/root/auto-submitter/src/lib/worker.ts'
     }
 ];
 

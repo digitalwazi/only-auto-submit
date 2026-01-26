@@ -12,7 +12,7 @@ const conn = new Client();
 
 conn.on('ready', () => {
     console.log('Client :: ready');
-    conn.exec('pm2 logs worker-daemon --lines 50 --nostream', (err, stream) => {
+    conn.exec('curl -I -L --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" "https://bundlewp.com/gjftj/"', (err, stream) => {
         if (err) throw err;
         stream.on('close', (code, signal) => {
             conn.end();
