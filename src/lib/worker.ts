@@ -36,17 +36,29 @@ export async function processBatch() {
         select: { id: true, name: true, fields: true, status: true, headless: true }
     });
 
-    if (!campaign) return { processed: 0, status: "IDLE" };
+    if (!campaign) {
+        // console.log("No RUNNING campaign found.");
+        return { processed: 0, status: "IDLE" };
+    }
+    console.log(`[Worker] Found Campaign: ${campaign.name} (${campaign.id})`);
 
     // Per-campaign Headless Override
     const isHeadless = campaign.headless !== false;
-    const fields = JSON.parse(campaign.fields);
+    let fields;
+    try {
+        fields = JSON.parse(campaign.fields);
+    } catch (e) {
+        console.error(`[Worker] Failed to parse fields for campaign ${campaign.id}`, e);
+        return { processed: 0, status: "FAILED_FIELDS" };
+    }
 
     // Get a batch of PENDING links
     const links = await prisma.link.findMany({
         where: { campaignId: campaign.id, status: "PENDING" },
         take: concurrency,
     });
+
+    console.log(`[Worker] Found ${links.length} PENDING links for current batch.`);
 
     if (links.length === 0) {
         // Check if finished
