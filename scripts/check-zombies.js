@@ -13,18 +13,14 @@ const conn = new Client();
 conn.on('ready', () => {
     console.log('Client :: ready');
     const cmd = `
-        echo "=== STARTING WORKER (ID 1) ===";
-        pm2 restart 1;
-        pm2 save;
+        echo "=== CHROME PROCESS COUNT ===";
+        ps aux | grep -c chrome;
         
-        echo "=== WAITING FOR STARTUP ===";
-        sleep 5;
+        echo "=== NODE PROCESS COUNT ===";
+        ps aux | grep -c node;
         
-        echo "=== CHECKING STATUS ===";
-        pm2 status 1;
-        
-        echo "=== CHECKING LOGS ===";
-        pm2 logs 1 --lines 50 --nostream;
+        echo "=== MEMORY USAGE ===";
+        free -h;
     `;
 
     conn.exec(cmd, (err, stream) => {

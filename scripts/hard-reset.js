@@ -13,18 +13,17 @@ const conn = new Client();
 conn.on('ready', () => {
     console.log('Client :: ready');
     const cmd = `
-        echo "=== STARTING WORKER (ID 1) ===";
-        pm2 restart 1;
-        pm2 save;
+        echo "=== RESETTING GLOBAL SETTINGS ===";
+        sqlite3 /root/only-auto-submit/prisma/dev.db "UPDATE GlobalSettings SET isWorkerOn=0;"
+        sleep 1;
+        sqlite3 /root/only-auto-submit/prisma/dev.db "UPDATE GlobalSettings SET isWorkerOn=1;"
         
-        echo "=== WAITING FOR STARTUP ===";
-        sleep 5;
+        echo "=== KILLING ORPHANED NODE PROCESSES ===";
+        pkill -f "puppeteer";
+        pkill -f "chrome";
         
-        echo "=== CHECKING STATUS ===";
-        pm2 status 1;
-        
-        echo "=== CHECKING LOGS ===";
-        pm2 logs 1 --lines 50 --nostream;
+        echo "=== RESTARTING DAEMON ===";
+        pm2 restart worker-daemon;
     `;
 
     conn.exec(cmd, (err, stream) => {

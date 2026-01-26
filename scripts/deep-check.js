@@ -13,18 +13,11 @@ const conn = new Client();
 conn.on('ready', () => {
     console.log('Client :: ready');
     const cmd = `
-        echo "=== STARTING WORKER (ID 1) ===";
-        pm2 restart 1;
-        pm2 save;
+        echo "=== CHECKING FILE CONTENT (First 50 lines) ===";
+        head -n 50 /root/only-auto-submit/src/lib/worker.ts;
         
-        echo "=== WAITING FOR STARTUP ===";
-        sleep 5;
-        
-        echo "=== CHECKING STATUS ===";
-        pm2 status 1;
-        
-        echo "=== CHECKING LOGS ===";
-        pm2 logs 1 --lines 50 --nostream;
+        echo "=== DEEP PM2 LOGS (Last 200) ===";
+        pm2 logs worker-daemon --lines 200 --nostream;
     `;
 
     conn.exec(cmd, (err, stream) => {

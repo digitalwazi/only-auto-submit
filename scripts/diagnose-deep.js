@@ -13,18 +13,14 @@ const conn = new Client();
 conn.on('ready', () => {
     console.log('Client :: ready');
     const cmd = `
-        echo "=== STARTING WORKER (ID 1) ===";
-        pm2 restart 1;
-        pm2 save;
+        echo "=== GLOBAL SETTINGS ===";
+        sqlite3 /root/only-auto-submit/prisma/dev.db "SELECT * FROM GlobalSettings;";
         
-        echo "=== WAITING FOR STARTUP ===";
-        sleep 5;
+        echo "\\n=== LINK COUNTS ===";
+        sqlite3 /root/only-auto-submit/prisma/dev.db "SELECT status, COUNT(*) FROM Link GROUP BY status;";
         
-        echo "=== CHECKING STATUS ===";
-        pm2 status 1;
-        
-        echo "=== CHECKING LOGS ===";
-        pm2 logs 1 --lines 50 --nostream;
+        echo "\\n=== RECENT SYSTEM LOGS ===";
+        sqlite3 /root/only-auto-submit/prisma/dev.db "SELECT * FROM SystemLog ORDER BY id DESC LIMIT 10;";
     `;
 
     conn.exec(cmd, (err, stream) => {

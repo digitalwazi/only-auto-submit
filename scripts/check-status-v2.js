@@ -13,18 +13,19 @@ const conn = new Client();
 conn.on('ready', () => {
     console.log('Client :: ready');
     const cmd = `
-        echo "=== STARTING WORKER (ID 1) ===";
-        pm2 restart 1;
-        pm2 save;
+        echo "=== 1. CHECKING BUILD PROCESS ===";
+        pgrep -a node | grep "next build";
+        pgrep -a node | grep "npm run build";
         
-        echo "=== WAITING FOR STARTUP ===";
-        sleep 5;
+        echo "=== 2. CHECKING SCREENSHOT FILE ===";
+        # Specific file user mentioned
+        ls -l /root/only-auto-submit/public/screenshots/proof-cmktgx2hw00pyize0jtdyxaqr.webp;
         
-        echo "=== CHECKING STATUS ===";
-        pm2 status 1;
+        echo "=== 3. CHECKING API ROUTE FILE ===";
+        ls -l /root/only-auto-submit/src/app/screenshots/\\[filename\\]/route.ts;
         
-        echo "=== CHECKING LOGS ===";
-        pm2 logs 1 --lines 50 --nostream;
+        echo "=== 4. CHECKING LOGS ===";
+        pm2 logs next-app --lines 20 --nostream;
     `;
 
     conn.exec(cmd, (err, stream) => {

@@ -20,6 +20,10 @@ conn.on('ready', () => {
         echo "=== INSTALLING DEPS (JUST IN CASE) ===";
         npm install;
         
+        echo "=== SYNCING DB SCHEMA ===";
+        npx prisma db push;
+        npx prisma generate;
+        
         echo "=== RESTARTING WORKER ===";
         pm2 restart worker-daemon;
         

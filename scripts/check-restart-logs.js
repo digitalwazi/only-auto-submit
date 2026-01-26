@@ -13,18 +13,8 @@ const conn = new Client();
 conn.on('ready', () => {
     console.log('Client :: ready');
     const cmd = `
-        echo "=== STARTING WORKER (ID 1) ===";
-        pm2 restart 1;
-        pm2 save;
-        
-        echo "=== WAITING FOR STARTUP ===";
-        sleep 5;
-        
-        echo "=== CHECKING STATUS ===";
-        pm2 status 1;
-        
-        echo "=== CHECKING LOGS ===";
-        pm2 logs 1 --lines 50 --nostream;
+        echo "=== SYSTEM LOGS (Last 20) ===";
+        sqlite3 /root/only-auto-submit/prisma/dev.db "SELECT id, message, type, createdAt FROM SystemLog ORDER BY id DESC LIMIT 20;";
     `;
 
     conn.exec(cmd, (err, stream) => {

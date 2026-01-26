@@ -91,7 +91,7 @@ async function runWorker() {
             if (lastLog) {
                 const timeDiff = Date.now() - new Date(lastLog.createdAt).getTime();
 
-                if (timeDiff > 5 * 60 * 1000) { // 5 minutes silence
+                if (timeDiff > 10 * 60 * 1000) { // 10 minutes silence (relaxed)
                     console.error(`💀 WORKER HUNG (${Math.round(timeDiff / 1000)}s silence). Committing suicide...`);
                     await logToDB(`Worker HUNG detected (${Math.round(timeDiff / 1000)}s silence). Forcing restart...`, "ERROR");
                     process.exit(1);
@@ -169,10 +169,10 @@ async function runWorker() {
         try {
             isProcessing = true;
 
-            // Race processBatch against a 4-minute timeout
+            // Race processBatch against a 15-minute timeout (increased from 4m)
             const result = await Promise.race([
                 processBatch(),
-                new Promise((_, reject) => setTimeout(() => reject(new Error("BATCH_TIMEOUT")), 240000))
+                new Promise((_, reject) => setTimeout(() => reject(new Error("BATCH_TIMEOUT")), 15 * 60 * 1000))
             ]) as any;
 
             isProcessing = false;

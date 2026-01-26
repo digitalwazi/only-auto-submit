@@ -5,7 +5,7 @@ const config = {
     port: 22,
     username: 'root',
     password: 'Wazi123@123123',
-    readyTimeout: 60000,
+    readyTimeout: 30000,
 };
 
 const conn = new Client();
@@ -13,18 +13,20 @@ const conn = new Client();
 conn.on('ready', () => {
     console.log('Client :: ready');
     const cmd = `
-        echo "=== STARTING WORKER (ID 1) ===";
-        pm2 restart 1;
-        pm2 save;
+        echo "=== UPTIME ===";
+        uptime;
         
-        echo "=== WAITING FOR STARTUP ===";
-        sleep 5;
+        echo "=== MEMORY ===";
+        free -h;
         
-        echo "=== CHECKING STATUS ===";
-        pm2 status 1;
+        echo "=== PM2 LIST ===";
+        pm2 list;
         
-        echo "=== CHECKING LOGS ===";
-        pm2 logs 1 --lines 50 --nostream;
+        echo "=== PORTS ===";
+        netstat -tulnp | grep LISTEN;
+        
+        echo "=== PM2 LOGS (Last 20 lines) ===";
+        pm2 logs --lines 20 --nostream;
     `;
 
     conn.exec(cmd, (err, stream) => {

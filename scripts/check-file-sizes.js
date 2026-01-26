@@ -12,25 +12,9 @@ const conn = new Client();
 
 conn.on('ready', () => {
     console.log('Client :: ready');
-    const cmd = `
-        echo "=== STARTING WORKER (ID 1) ===";
-        pm2 restart 1;
-        pm2 save;
-        
-        echo "=== WAITING FOR STARTUP ===";
-        sleep 5;
-        
-        echo "=== CHECKING STATUS ===";
-        pm2 status 1;
-        
-        echo "=== CHECKING LOGS ===";
-        pm2 logs 1 --lines 50 --nostream;
-    `;
-
-    conn.exec(cmd, (err, stream) => {
+    conn.exec('ls -l /root/only-auto-submit/scripts/worker.ts /root/only-auto-submit/src/lib/worker.ts', (err, stream) => {
         if (err) throw err;
         stream.on('close', (code, signal) => {
-            console.log('Stream :: close :: code: ' + code + ', signal: ' + signal);
             conn.end();
         }).on('data', (data) => {
             process.stdout.write(data);

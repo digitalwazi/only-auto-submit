@@ -1,4 +1,6 @@
 const { Client } = require('ssh2');
+const fs = require('fs');
+const path = require('path');
 
 const config = {
     host: '31.97.188.144',
@@ -8,23 +10,30 @@ const config = {
     readyTimeout: 60000,
 };
 
+const localPath = path.join(__dirname, '../src/lib/worker.ts');
+const remotePath = '/root/only-auto-submit/src/lib/worker.ts';
+
 const conn = new Client();
 
 conn.on('ready', () => {
     console.log('Client :: ready');
+
+    // Read file and convert to base64
+    const content = fs.readFileSync(localPath);
+    const base64 = content.toString('base64');
+
+    console.log(`Uploading ${localPath} (${content.length} bytes) to ${remotePath}...`);
+
     const cmd = `
-        echo "=== STARTING WORKER (ID 1) ===";
-        pm2 restart 1;
-        pm2 save;
+        echo "=== DECODING BASE64 TO FILE ==="
+        echo "${base64}" | base64 -d > "${remotePath}"
         
-        echo "=== WAITING FOR STARTUP ===";
-        sleep 5;
+        echo "=== VERIFYING FILE SIZE ==="
+        ls -l "${remotePath}"
         
-        echo "=== CHECKING STATUS ===";
-        pm2 status 1;
-        
-        echo "=== CHECKING LOGS ===";
-        pm2 logs 1 --lines 50 --nostream;
+        echo "=== RESTARTING WORKER ==="
+        pm2 restart 1
+        pm2 save
     `;
 
     conn.exec(cmd, (err, stream) => {

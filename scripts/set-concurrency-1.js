@@ -13,18 +13,9 @@ const conn = new Client();
 conn.on('ready', () => {
     console.log('Client :: ready');
     const cmd = `
-        echo "=== STARTING WORKER (ID 1) ===";
-        pm2 restart 1;
-        pm2 save;
-        
-        echo "=== WAITING FOR STARTUP ===";
-        sleep 5;
-        
-        echo "=== CHECKING STATUS ===";
-        pm2 status 1;
-        
-        echo "=== CHECKING LOGS ===";
-        pm2 logs 1 --lines 50 --nostream;
+        sqlite3 /root/only-auto-submit/prisma/dev.db "UPDATE GlobalSettings SET concurrency = 1 WHERE id = 1;"
+        echo "Concurrency updated to 1."
+        pm2 restart worker-daemon
     `;
 
     conn.exec(cmd, (err, stream) => {

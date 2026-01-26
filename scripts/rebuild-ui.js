@@ -13,18 +13,22 @@ const conn = new Client();
 conn.on('ready', () => {
     console.log('Client :: ready');
     const cmd = `
-        echo "=== STARTING WORKER (ID 1) ===";
-        pm2 restart 1;
-        pm2 save;
+        echo "=== NAVIGATING TO CORRECT DIR ===";
+        cd /root/only-auto-submit;
         
-        echo "=== WAITING FOR STARTUP ===";
-        sleep 5;
+        echo "=== PULLING LATEST CODE ===";
+        git pull;
         
-        echo "=== CHECKING STATUS ===";
-        pm2 status 1;
+        echo "=== VERIFYING FILE CONTENT ===";
+        grep "Proof" src/app/campaigns/\\[id\\]/page.tsx || echo "CRITICAL: Proof code missing!";
         
-        echo "=== CHECKING LOGS ===";
-        pm2 logs 1 --lines 50 --nostream;
+        echo "=== REBUILDING NEXT.JS ===";
+        npm run build;
+        
+        echo "=== RESTARTING PROCESSES ===";
+        pm2 restart all;
+        
+        echo "=== DONE ===";
     `;
 
     conn.exec(cmd, (err, stream) => {

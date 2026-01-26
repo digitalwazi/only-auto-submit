@@ -13,18 +13,14 @@ const conn = new Client();
 conn.on('ready', () => {
     console.log('Client :: ready');
     const cmd = `
-        echo "=== STARTING WORKER (ID 1) ===";
-        pm2 restart 1;
-        pm2 save;
+        echo "=== WORKER LOGS (Last 100 lines) ===";
+        pm2 logs worker-daemon --lines 100 --nostream;
         
-        echo "=== WAITING FOR STARTUP ===";
-        sleep 5;
+        echo "=== DB PENDING COUNT ===";
+        sqlite3 /root/only-auto-submit/prisma/dev.db "SELECT COUNT(*) FROM Link WHERE status='PENDING';"
         
-        echo "=== CHECKING STATUS ===";
-        pm2 status 1;
-        
-        echo "=== CHECKING LOGS ===";
-        pm2 logs 1 --lines 50 --nostream;
+        echo "=== CAMPAIGN STATUS ===";
+        sqlite3 /root/only-auto-submit/prisma/dev.db "SELECT id, status FROM Campaign;"
     `;
 
     conn.exec(cmd, (err, stream) => {

@@ -13,18 +13,11 @@ const conn = new Client();
 conn.on('ready', () => {
     console.log('Client :: ready');
     const cmd = `
-        echo "=== STARTING WORKER (ID 1) ===";
-        pm2 restart 1;
-        pm2 save;
+        echo "=== DISABLING AUTO-RESTART ===";
+        sqlite3 /root/only-auto-submit/prisma/dev.db "UPDATE GlobalSettings SET autoRestartInterval = 0 WHERE id = 1;";
         
-        echo "=== WAITING FOR STARTUP ===";
-        sleep 5;
-        
-        echo "=== CHECKING STATUS ===";
-        pm2 status 1;
-        
-        echo "=== CHECKING LOGS ===";
-        pm2 logs 1 --lines 50 --nostream;
+        echo "=== VERIFYING SETTINGS ===";
+        sqlite3 /root/only-auto-submit/prisma/dev.db "SELECT * FROM GlobalSettings;";
     `;
 
     conn.exec(cmd, (err, stream) => {

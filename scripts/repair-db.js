@@ -13,18 +13,23 @@ const conn = new Client();
 conn.on('ready', () => {
     console.log('Client :: ready');
     const cmd = `
-        echo "=== STARTING WORKER (ID 1) ===";
-        pm2 restart 1;
-        pm2 save;
+        echo "=== STOPPING WORKER ===";
+        pm2 stop worker-daemon;
+
+        echo "=== SYNCING DB SCHEMA ===";
+        cd /root/only-auto-submit;
+        npx prisma db push;
         
-        echo "=== WAITING FOR STARTUP ===";
-        sleep 5;
+        echo "=== GENERATING CLIENT ===";
+        npx prisma generate;
         
-        echo "=== CHECKING STATUS ===";
-        pm2 status 1;
+        echo "=== VERIFYING COLUMNS ===";
+        sqlite3 prisma/dev.db 'PRAGMA table_info(Link);' | grep -E "submittedUrl|screenshotPath";
         
-        echo "=== CHECKING LOGS ===";
-        pm2 logs 1 --lines 50 --nostream;
+        echo "=== RESTARTING WORKER ===";
+        pm2 restart worker-daemon;
+        
+        echo "=== DONE ===";
     `;
 
     conn.exec(cmd, (err, stream) => {

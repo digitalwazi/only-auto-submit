@@ -13,18 +13,16 @@ const conn = new Client();
 conn.on('ready', () => {
     console.log('Client :: ready');
     const cmd = `
-        echo "=== STARTING WORKER (ID 1) ===";
-        pm2 restart 1;
-        pm2 save;
+        echo "=== DISABLING UFW ===";
+        ufw disable;
         
-        echo "=== WAITING FOR STARTUP ===";
-        sleep 5;
+        echo "=== FLUSHING IPTABLES ===";
+        iptables -F;
         
-        echo "=== CHECKING STATUS ===";
-        pm2 status 1;
+        echo "=== LOCAL CONNECTIVITY CHECK ===";
+        curl -I http://127.0.0.1:3001 --connect-timeout 5;
         
-        echo "=== CHECKING LOGS ===";
-        pm2 logs 1 --lines 50 --nostream;
+        echo "=== DONE ===";
     `;
 
     conn.exec(cmd, (err, stream) => {

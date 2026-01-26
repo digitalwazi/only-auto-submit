@@ -13,18 +13,21 @@ const conn = new Client();
 conn.on('ready', () => {
     console.log('Client :: ready');
     const cmd = `
-        echo "=== STARTING WORKER (ID 1) ===";
-        pm2 restart 1;
-        pm2 save;
+        echo "=== SYSTEM RESOURCES ===";
+        free -h;
+        uptime;
         
-        echo "=== WAITING FOR STARTUP ===";
-        sleep 5;
+        echo "=== DISK SPACE ===";
+        df -h /;
         
-        echo "=== CHECKING STATUS ===";
-        pm2 status 1;
+        echo "=== PM2 LOGS (Last 50 lines - Look for crash/error) ===";
+        pm2 logs worker-daemon --lines 50 --nostream;
         
-        echo "=== CHECKING LOGS ===";
-        pm2 logs 1 --lines 50 --nostream;
+        echo "=== ZOMBIE CHROME PROCESSES ===";
+        pgrep -a chrome | wc -l;
+        
+        echo "=== RECENT OOM KILLS ===";
+        grep -i "out of memory" /var/log/syslog | tail -n 5;
     `;
 
     conn.exec(cmd, (err, stream) => {

@@ -1,21 +1,41 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 export default function WorkerPinger() {
     const router = useRouter();
+    const isRunning = useRef(false);
 
     useEffect(() => {
-        const interval = setInterval(async () => {
+        const pingWorker = async () => {
+            if (isRunning.current) return;
+            isRunning.current = true;
+
             try {
-                // Passive check only - do not trigger run
-                // const res = await fetch("/api/worker/run"); 
-                console.log("Client connected. Background worker should be running on server.");
+                // Trigger the worker to process a batch
+                const res = await fetch("/api/worker/process", { method: "POST" });
+                const data = await res.json();
+
+                if (data.status === "ACTIVE" || data.status === "COMPLETED_CAMPAIGN") {
+                    console.log("Worker Pulse:", data);
+                    // Optional: refresh router if campaign completed
+                    if (data.status === "COMPLETED_CAMPAIGN") {
+                        router.refresh();
+                    }
+                }
             } catch (e) {
-                console.error("Connection check failed", e);
+                console.error("Worker connection failed", e);
+            } finally {
+                isRunning.current = false;
             }
-        }, 10000); // Ping every 10 seconds
+        };
+
+        // Poll every 5 seconds to keep the queue moving
+        const interval = setInterval(pingWorker, 5000); // 5s gap
+
+        // Initial ping
+        pingWorker();
 
         return () => clearInterval(interval);
     }, [router]);

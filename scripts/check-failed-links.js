@@ -12,30 +12,16 @@ const conn = new Client();
 
 conn.on('ready', () => {
     console.log('Client :: ready');
-    const cmd = `
-        echo "=== STARTING WORKER (ID 1) ===";
-        pm2 restart 1;
-        pm2 save;
-        
-        echo "=== WAITING FOR STARTUP ===";
-        sleep 5;
-        
-        echo "=== CHECKING STATUS ===";
-        pm2 status 1;
-        
-        echo "=== CHECKING LOGS ===";
-        pm2 logs 1 --lines 50 --nostream;
-    `;
+    // Get 5 failed links to see what kind of sites we are dealing with
+    const query = "SELECT url, error FROM Link WHERE status='FAILED' LIMIT 5;";
+    const cmd = `sqlite3 /root/only-auto-submit/prisma/dev.db "${query}"`;
 
     conn.exec(cmd, (err, stream) => {
         if (err) throw err;
         stream.on('close', (code, signal) => {
-            console.log('Stream :: close :: code: ' + code + ', signal: ' + signal);
             conn.end();
         }).on('data', (data) => {
             process.stdout.write(data);
-        }).stderr.on('data', (data) => {
-            process.stderr.write(data);
         });
     });
 }).connect(config);

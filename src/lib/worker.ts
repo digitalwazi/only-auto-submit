@@ -200,9 +200,44 @@ export async function processBatch() {
                             } catch (e) { }
 
                             await element.type(field.value, { delay: 5 }); // Fast typing
+
+                            // DISPATCH EVENTS for React/Vue/Angular
+                            await page.evaluate((el: any) => {
+                                el.dispatchEvent(new Event('input', { bubbles: true }));
+                                el.dispatchEvent(new Event('change', { bubbles: true }));
+                                el.dispatchEvent(new Event('blur', { bubbles: true }));
+                            }, element);
+
                             fieldFound = true;
                         }
                     } catch (e) { }
+                }
+
+                if (!fieldFound) {
+                    // Fallback: Try to find ANY visible textarea for the message
+                    const messageField = fields.find(f => f.name.includes("message") || f.name.includes("comment"));
+                    if (messageField) {
+                        try {
+                            const fallbackSelector = 'textarea, div[contenteditable="true"]';
+                            const elements = await page.$$(fallbackSelector);
+                            for (const el of elements) {
+                                if (await el.boundingBox()) {
+                                    // Check if emptiness
+                                    const text = await page.evaluate((e: any) => e.value || e.innerText, el);
+                                    if (!text || text.length < 5) {
+                                        await cursor.click(el);
+                                        await el.type(messageField.value, { delay: 5 });
+                                        await page.evaluate((e: any) => {
+                                            e.dispatchEvent(new Event('input', { bubbles: true }));
+                                            e.dispatchEvent(new Event('change', { bubbles: true }));
+                                        }, el);
+                                        fieldFound = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        } catch (e) { }
+                    }
                 }
 
                 if (!fieldFound) {
@@ -210,21 +245,34 @@ export async function processBatch() {
                 }
 
                 // --- 4. SUBMIT ---
+                // --- 4. IMPROVED SUBMIT STRATEGY ---
                 let submitted = false;
-                const textTargets = ["Submit", "Send", "Post", "Contact", "Message", "Go", "Comment", "Reply"];
+                const beforeSubmitContent = await page.content();
+                const beforeSubmitUrl = page.url();
 
-                // Try clicking buttons with specific text
+                // Strategy A: Press ENTER on the last active element
+                try {
+                    await page.keyboard.press('Enter');
+                    await new Promise(r => setTimeout(r, 1000));
+                } catch (e) { }
+
+                // Strategy B: Click Submit Buttons
+                const textTargets = ["Submit", "Send", "Post", "Contact", "Message", "Go", "Comment", "Reply", "Send Message"];
                 for (const text of textTargets) {
                     if (submitted) break;
                     try {
-                        const xpath = `//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${text.toLowerCase()}')] | //input[@type='submit' and contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${text.toLowerCase()}')]`;
+                        // Case insensitive XPath for buttons or inputs with specific text
+                        const xpath = `//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${text.toLowerCase()}')] | //input[@type='submit' and contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${text.toLowerCase()}')] | //span[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${text.toLowerCase()}')]`;
                         const elements = await page.$$(`xpath/${xpath}`);
                         for (const element of elements) {
                             try {
                                 if (await element.boundingBox()) {
+                                    // Ensure it's visible and clickable
+                                    await cursor.move(element); // Move first
                                     await cursor.click(element);
                                     submitted = true;
-                                    await new Promise(r => setTimeout(r, 1000));
+                                    console.log(`[Worker] Clicked button with text: ${text}`);
+                                    await new Promise(r => setTimeout(r, 5000)); // Wait 5s for network/nav
                                     break;
                                 }
                             } catch (e) { }
@@ -232,38 +280,77 @@ export async function processBatch() {
                     } catch (e) { }
                 }
 
-                // Try generic submit buttons
+                // Strategy C: Generic Selectors
                 if (!submitted) {
                     const submitSelectors = [
                         'button[type="submit"]',
                         'input[type="submit"]',
                         'button[class*="submit" i]',
                         'button[class*="btn-primary" i]',
+                        'form button:not([type="button"])', // Default button in form is submit
                     ];
                     for (const selector of submitSelectors) {
                         try {
                             const btn = await page.$(selector);
                             if (btn && await btn.boundingBox()) {
+                                await cursor.move(btn);
                                 await cursor.click(btn);
                                 submitted = true;
-                                await new Promise(r => setTimeout(r, 1000));
+                                console.log(`[Worker] Clicked button with selector: ${selector}`);
+                                await new Promise(r => setTimeout(r, 5000));
                                 break;
                             }
                         } catch (e) { }
                     }
                 }
 
-                // JS Force Submit
+                // Strategy D: JS Force RequestSubmit (Triggers validation)
                 if (!submitted) {
-                    submitted = await page.evaluate(() => {
+                    console.log("[Worker] No submit button found, trying JS submit...");
+                    await page.evaluate(() => {
                         const form = document.querySelector('form');
                         if (form) {
-                            form.requestSubmit ? form.requestSubmit() : form.submit();
-                            return true;
+                            if (form.requestSubmit) form.requestSubmit();
+                            else form.submit();
                         }
-                        return false;
                     });
-                    await new Promise(r => setTimeout(r, 1500));
+                    await new Promise(r => setTimeout(r, 5000));
+                }
+
+                // --- 5. VERIFY SUBMISSION (CRITICAL FIX) ---
+                let afterSubmitContent = await page.content();
+                const afterSubmitUrl = page.url();
+
+                // Check 1: Did URL Change?
+                if (beforeSubmitUrl !== afterSubmitUrl) {
+                    // Good sign!
+                }
+                // Check 2: Did Content Change significantly?
+                else if (beforeSubmitContent.length === afterSubmitContent.length) {
+                    // Check for validation errors visible on screen
+                    const errorText = await page.evaluate(() => {
+                        return document.body.innerText.match(/(required|missing|invalid|error|fill out)/i);
+                    });
+
+                    if (errorText) {
+                        throw new Error(`VALIDATION_ERROR: Page showed '${errorText[0]}' after submit.`);
+                    }
+
+                    // If content is IDENTICAL, it probably didn't submit. RETRY ONCE.
+                    if (beforeSubmitContent === afterSubmitContent) {
+                        console.log("[Worker] Content unchanged. Retrying Force JS Submit...");
+                        await page.evaluate(() => {
+                            const form = document.querySelector('form');
+                            if (form) form.submit(); // Force hard submit
+                        });
+                        await new Promise(r => setTimeout(r, 5000));
+
+                        // Re-check
+                        afterSubmitContent = await page.content();
+                        if (beforeSubmitContent === afterSubmitContent) {
+                            throw new Error("SUBMIT_FAILED: Page did not react to submit action (Retry failed).");
+                        }
+                    }
                 }
 
                 // --- 5. CHECK SUCCESS ---

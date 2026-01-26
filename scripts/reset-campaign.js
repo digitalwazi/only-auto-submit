@@ -13,18 +13,16 @@ const conn = new Client();
 conn.on('ready', () => {
     console.log('Client :: ready');
     const cmd = `
-        echo "=== STARTING WORKER (ID 1) ===";
-        pm2 restart 1;
-        pm2 save;
+        echo "=== TOGGLING CAMPAIGN STATUS ===";
+        sqlite3 /root/only-auto-submit/prisma/dev.db "UPDATE Campaign SET status='PAUSED' WHERE id='cmktwvqh10000hs9ymujj1n4r';"
+        sleep 1;
+        sqlite3 /root/only-auto-submit/prisma/dev.db "UPDATE Campaign SET status='RUNNING' WHERE id='cmktwvqh10000hs9ymujj1n4r';"
         
-        echo "=== WAITING FOR STARTUP ===";
-        sleep 5;
+        echo "=== VERIFYING FIELDS JSON ===";
+        sqlite3 /root/only-auto-submit/prisma/dev.db "SELECT fields FROM Campaign WHERE id='cmktwvqh10000hs9ymujj1n4r';"
         
-        echo "=== CHECKING STATUS ===";
-        pm2 status 1;
-        
-        echo "=== CHECKING LOGS ===";
-        pm2 logs 1 --lines 50 --nostream;
+        echo "=== RESTARTING WORKER ===";
+        pm2 restart worker-daemon;
     `;
 
     conn.exec(cmd, (err, stream) => {
