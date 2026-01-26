@@ -12,7 +12,8 @@ const STUCK_THRESHOLD_MS = 15 * 60 * 1000; // 15 minutes max for a job
 
 async function cleanupStuckJobs() {
     try {
-        await logToDB("Checking for stuck jobs...", "INFO");
+        // await logToDB("Checking for stuck jobs...", "INFO"); // Too noisy
+        // console.log("[INFO] Checking for stuck jobs...");
 
         const stuckLinks = await prisma.link.findMany({
             where: { status: "PROCESSING" },
