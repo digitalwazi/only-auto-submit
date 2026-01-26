@@ -116,6 +116,44 @@ async function runWorker() {
         } catch (e) { console.error("Watchdog Failed", e); }
     }, 2 * 60 * 1000);
 
+    const IDLE_TIMEOUT = 30000; // 30s
+    let lastProcessedTime = Date.now();
+
+    async function checkAndResumeStuck() {
+        try {
+            // 1. Check if we have PENDING links globally
+            const pendingCount = await prisma.link.count({ where: { status: "PENDING" } });
+            if (pendingCount === 0) return;
+
+            console.log(`[Watchdog] Global Pending Links found (${pendingCount}) but Worker is IDLE.`);
+
+            // 2. Find campaigns associated with these pending links
+            // We find the first campaign that has pending links
+            const firstPendingLink = await prisma.link.findFirst({
+                where: { status: "PENDING" },
+                select: { campaignId: true }
+            });
+
+            if (firstPendingLink) {
+                const campaignId = firstPendingLink.campaignId;
+                console.log(`[Watchdog] Auto-Resuming Campaign ${campaignId} to process queue...`);
+
+                // Force status to RUNNING
+                await prisma.campaign.update({
+                    where: { id: campaignId },
+                    data: { status: "RUNNING" }
+                });
+                await logToDB(`Watchdog: Auto-Resumed campaign ${campaignId} (Queue stuck > 30s)`, "WARN");
+
+                // Reset timer so we don't spam
+                lastProcessedTime = Date.now();
+            }
+
+        } catch (e) {
+            console.error("Watchdog Resume Error:", e);
+        }
+    }
+
     while (true) {
         try {
             // Find running campaigns
@@ -123,9 +161,19 @@ async function runWorker() {
             // The library now handles finding the campaign and processing a batch
             const result = await processBatch();
 
+            if (result.processed > 0) {
+                lastProcessedTime = Date.now();
+            }
+
             if (result.status === "IDLE") {
                 // No active campaigns or no pending links
                 // console.log("No work found.");
+
+                // Check 30s Queue Watchdog
+                if (Date.now() - lastProcessedTime > IDLE_TIMEOUT) {
+                    await checkAndResumeStuck();
+                }
+
             } else if (result.status === "WORKER_OFF") {
                 console.log("Worker is OFF in settings.");
             }
