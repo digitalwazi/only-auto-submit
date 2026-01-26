@@ -86,42 +86,57 @@ export async function processBatch() {
     let browser = null;
     let page = null;
 
+    // --- FRESH BROWSER PER BATCH ARCHITECTURE ---
+
     try {
-        // Launch browser ONCE for the whole batch
-        browser = await puppeteer.launch({
-            headless: isHeadless,
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--no-first-run',
-                '--no-zygote',
-                '--single-process',
-                '--disable-gpu'
-            ],
-            defaultViewport: null,
-            protocolTimeout: 120000
-        });
+        console.log(`[Worker] Launching Browser...`);
 
+        // Launch with strict timeout
+        browser = await Promise.race([
+            puppeteer.launch({
+                headless: isHeadless,
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--single-process', // RAM saver
+                    '--disable-gpu',
+                    '--disable-features=site-per-process', // Critical for VPS memory
+                    '--disk-cache-dir=/tmp/puppeteer-cache' // Move cache off disk if possible
+                ],
+                defaultViewport: null,
+                protocolTimeout: 60000,
+                timeout: 30000 // 30s Launch Timeout
+            }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("LAUNCH_TIMEOUT")), 35000))
+        ]) as any;
+
+        if (!browser) throw new Error("Browser failed to launch (Buffer mismatch)");
+
+        console.log(`[Worker] Browser Launched. Opening Context...`);
         const context = browser.defaultBrowserContext();
-        await context.overridePermissions(links[0].url, ['notifications']); // Optional permission fix
 
-        // Loop through links using the SAME browser
+        // Loop through links using the SAME browser instance
         for (const link of links) {
             try {
-                // ... (Processing Logic)
-
                 // Mark PROCESSING
                 await prisma.link.update({ where: { id: link.id }, data: { status: "PROCESSING", error: null } });
                 await logToDB(`Processing: ${link.url}`, "INFO");
 
-                page = await browser.newPage();
+                // Page Creation Timeout
+                page = await Promise.race([
+                    browser.newPage(),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error("NEW_PAGE_TIMEOUT")), 10000))
+                ]) as any;
 
                 // Randomize User Agent
                 const randomUA = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
                 await page.setUserAgent(randomUA);
 
-                // Initialize Ghost Cursor
+                // Initialize Ghost Cursor (Can hang on low mem, using basic clicks for now if needed, but keeping for stealth)
+                // const cursor = createCursor(page); // Keeping for now, but be verifying
                 const cursor = createCursor(page);
 
                 // --- 1. NAVIGATE (FAIL FAST) ---
