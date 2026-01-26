@@ -320,167 +320,168 @@ export async function processBatch() {
 
                 // --- 5. VERIFY SUBMISSION (CRITICAL FIX) ---
                 // --- 5. VERIFY SUBMISSION (STRICT MODE) ---
-                let afterSubmitContent = await page.content();
-                const afterSubmitUrl = page.url();
-                const pageContentLower = afterSubmitContent.toLowerCase();
-
-                // 5a. FAIL_FAST: Check for explicit ERROR keywords immediately
-                // Even if URL changed, an error might be displayed on the new page.
-                const errorKeywords = [
-                    "captcha",
-                    "error",
-                    "invalid",
-                    "spam",
-                    "prove you are human",
-                    "blocked",
-                    "forbidden",
-                    "too fast",
-                    "duplicate comment" // Treat as pseudo-success or fail depending on preference? usually fail for reporting.
-                ];
-
-                const foundError = errorKeywords.find(k => pageContentLower.includes(k));
-                if (foundError) {
-                    // Special case: "Duplicate" might be acceptable if we want to confirm it WAS submitted.
-                    // But usually, it means THIS attempt failed.
-                    if (foundError.includes("duplicate")) {
-                        console.log("[Worker] Duplicate detected. Marking as SUCCESS (Already submitted).");
-                    } else {
-                        throw new Error(`SUBMIT_FAILED: Found error keyword '${foundError}' on result page.`);
-                    }
-                }
-
-                // 5b. SUCCESS CHECKS
-                let isSuccess = false;
-                let successReason = "";
-
-                // Check 1: Explicit Success Keywords
-                const successKeywords = [
-                    "comment awaiting moderation",
-                    "your comment is awaiting moderation",
-                    "thank you",
-                    "comment submitted",
-                    "successfully",
-                    "was added",
-                    "pending approval"
-                ];
-                const foundSuccess = successKeywords.find(k => pageContentLower.includes(k));
-
-                if (foundSuccess) {
-                    isSuccess = true;
-                    successReason = `Found keyword: "${foundSuccess}"`;
-                }
-
-                // Check 2: Output Validation (Did our unique text appear?)
-                // (Only works if comment is auto-approved)
-                // const messageField = fields.find(f => f.name.includes("message"));
-                // if (messageField && pageContentLower.includes(messageField.value.toLowerCase())) {
-                //    isSuccess = true; 
-                //    successReason = "Comment text found on page";
-                // }
-
-                // Check 3: URL Change (Fallback, but stricter now because we checked for errors first)
-                if (!isSuccess && beforeSubmitUrl !== afterSubmitUrl) {
-                    // If URL changed and NO error keywords found -> Assume Success (Redirect)
-                    isSuccess = true;
-                    successReason = "URL Changed (No errors detected)";
-                }
-
-                if (!isSuccess) {
-                    // If Content is same AND Url is same -> It failed.
-                    if (beforeSubmitContent === afterSubmitContent) {
-                        throw new Error("SUBMIT_FAILED: Content unchanged after submit.");
-                    }
-
-                    // If Content changed but URL didn't, and no success keywords?
-                    // It's ambiguous. Let's look for known failure patterns again or default to WARN?
-                    // For now, strict mode says: IF unsure, FAILED.
-                    // But often AJAX forms just clear the box.
-
-                    // Check if form was cleared?
-                    // (Too complex for generic).
-
-                    // FALLBACK: If we didn't find an error, assume success?
-                    // NO, user complained about false positives. 
-                    // Throw error if we can't prove success.
-                    throw new Error("SUBMIT_FAILED: Could not verify success (No success message, URL didn't change).");
-                }
-
-
-                // --- 6. CAPTURE PROOF (Fixed Path) ---
-                console.log(`[Worker] Verifying Success: ${successReason}`);
-
-                const finalUrl = page.url();
-                const screenshotDir = path.join(process.cwd(), 'public', 'screenshots');
-
-                if (!fs.existsSync(screenshotDir)) {
-                    fs.mkdirSync(screenshotDir, { recursive: true });
-                }
-
-                const screenshotFilename = `proof-${link.id}-${Date.now()}.webp`; // Add timestamp to avoid cache
-                const screenshotPath = path.join(screenshotDir, screenshotFilename);
-
                 try {
-                    await page.screenshot({ path: screenshotPath, type: 'webp', quality: 50 });
-                } catch (e) { console.error("Screenshot failed", e); }
+                    let afterSubmitContent = await page.content();
+                    const afterSubmitUrl = page.url();
+                    const pageContentLower = afterSubmitContent.toLowerCase();
 
-                // Save to DB (Relative path for frontend)
-                const dbScreenshotPath = `/screenshots/${screenshotFilename}`;
+                    // 5a. FAIL_FAST: Check for explicit ERROR keywords immediately
+                    // Even if URL changed, an error might be displayed on the new page.
+                    const errorKeywords = [
+                        "captcha",
+                        "error",
+                        "invalid",
+                        "spam",
+                        "prove you are human",
+                        "blocked",
+                        "forbidden",
+                        "too fast",
+                        "duplicate comment" // Treat as pseudo-success or fail depending on preference? usually fail for reporting.
+                    ];
+
+                    const foundError = errorKeywords.find(k => pageContentLower.includes(k));
+                    if (foundError) {
+                        // Special case: "Duplicate" might be acceptable if we want to confirm it WAS submitted.
+                        // But usually, it means THIS attempt failed.
+                        if (foundError.includes("duplicate")) {
+                            console.log("[Worker] Duplicate detected. Marking as SUCCESS (Already submitted).");
+                        } else {
+                            throw new Error(`SUBMIT_FAILED: Found error keyword '${foundError}' on result page.`);
+                        }
+                    }
+
+                    // 5b. SUCCESS CHECKS
+                    let isSuccess = false;
+                    let successReason = "";
+
+                    // Check 1: Explicit Success Keywords
+                    const successKeywords = [
+                        "comment awaiting moderation",
+                        "your comment is awaiting moderation",
+                        "thank you",
+                        "comment submitted",
+                        "successfully",
+                        "was added",
+                        "pending approval"
+                    ];
+                    const foundSuccess = successKeywords.find(k => pageContentLower.includes(k));
+
+                    if (foundSuccess) {
+                        isSuccess = true;
+                        successReason = `Found keyword: "${foundSuccess}"`;
+                    }
+
+                    // Check 2: Output Validation (Did our unique text appear?)
+                    // (Only works if comment is auto-approved)
+                    // const messageField = fields.find(f => f.name.includes("message"));
+                    // if (messageField && pageContentLower.includes(messageField.value.toLowerCase())) {
+                    //    isSuccess = true; 
+                    //    successReason = "Comment text found on page";
+                    // }
+
+                    // Check 3: URL Change (Fallback, but stricter now because we checked for errors first)
+                    if (!isSuccess && beforeSubmitUrl !== afterSubmitUrl) {
+                        // If URL changed and NO error keywords found -> Assume Success (Redirect)
+                        isSuccess = true;
+                        successReason = "URL Changed (No errors detected)";
+                    }
+
+                    if (!isSuccess) {
+                        // If Content is same AND Url is same -> It failed.
+                        if (beforeSubmitContent === afterSubmitContent) {
+                            throw new Error("SUBMIT_FAILED: Content unchanged after submit.");
+                        }
+
+                        // If Content changed but URL didn't, and no success keywords?
+                        // It's ambiguous. Let's look for known failure patterns again or default to WARN?
+                        // For now, strict mode says: IF unsure, FAILED.
+                        // But often AJAX forms just clear the box.
+
+                        // Check if form was cleared?
+                        // (Too complex for generic).
+
+                        // FALLBACK: If we didn't find an error, assume success?
+                        // NO, user complained about false positives. 
+                        // Throw error if we can't prove success.
+                        throw new Error("SUBMIT_FAILED: Could not verify success (No success message, URL didn't change).");
+                    }
+
+
+                    // --- 6. CAPTURE PROOF (Fixed Path) ---
+                    console.log(`[Worker] Verifying Success: ${successReason}`);
+
+                    const finalUrl = page.url();
+                    const screenshotDir = path.join(process.cwd(), 'public', 'screenshots');
+
+                    if (!fs.existsSync(screenshotDir)) {
+                        fs.mkdirSync(screenshotDir, { recursive: true });
+                    }
+
+                    const screenshotFilename = `proof-${link.id}-${Date.now()}.webp`; // Add timestamp to avoid cache
+                    const screenshotPath = path.join(screenshotDir, screenshotFilename);
+
+                    try {
+                        await page.screenshot({ path: screenshotPath, type: 'webp', quality: 50 });
+                    } catch (e) { console.error("Screenshot failed", e); }
+
+                    // Save to DB (Relative path for frontend)
+                    const dbScreenshotPath = `/screenshots/${screenshotFilename}`;
+
+                    await prisma.link.update({
+                        where: { id: link.id },
+                        data: {
+                            status: "SUCCESS",
+                            error: null,
+                            submittedUrl: finalUrl,
+                            screenshotPath: dbScreenshotPath
+                        }
+                    });
+                    await logToDB(`SUCCESS: ${link.url} [${successReason}]`, "SUCCESS");
+
+                } catch (error: any) {
+                    // Check for navigation errors (success redirect can cause these sometimes)
+                    const emsg = error.message || "";
+                    if (emsg.includes("Execution context was destroyed") || emsg.includes("Protocol error") || emsg.includes("Target closed")) {
+                        // Even on redirect error, try to mark as success if we got far enough, but no screenshot
+                        await prisma.link.update({ where: { id: link.id }, data: { status: "SUCCESS", error: null, submittedUrl: page?.url() || "Redirected" } });
+                        await logToDB(`SUCCESS (Redirected): ${link.url}`, "SUCCESS");
+                    } else {
+                        throw error;
+                    }
+                }
+
+            } catch (error: any) {
+                // Categorize Errors
+                let status = "FAILED";
+                const msg = error.message || "Unknown error";
+
+                if (msg.includes("SKIP_CAPTCHA")) {
+                    await logToDB(`Skipped (Captcha): ${link.url}`, "WARN");
+                } else if (msg.includes("SKIP_NO_FIELDS")) {
+                    await logToDB(`Skipped (No Fields): ${link.url}`, "WARN");
+                } else if (msg.includes("TIMEOUT")) {
+                    await logToDB(`Timeout: ${link.url}`, "WARN");
+                } else {
+                    await logToDB(`Failed: ${link.url} - ${msg}`, "ERROR");
+                }
 
                 await prisma.link.update({
                     where: { id: link.id },
-                    data: {
-                        status: "SUCCESS",
-                        error: null,
-                        submittedUrl: finalUrl,
-                        screenshotPath: dbScreenshotPath
-                    }
+                    data: { status: status, error: msg }
                 });
-                await logToDB(`SUCCESS: ${link.url} [${successReason}]`, "SUCCESS");
 
-            } catch (error: any) {
-                // Check for navigation errors (success redirect can cause these sometimes)
-                const emsg = error.message || "";
-                if (emsg.includes("Execution context was destroyed") || emsg.includes("Protocol error") || emsg.includes("Target closed")) {
-                    // Even on redirect error, try to mark as success if we got far enough, but no screenshot
-                    await prisma.link.update({ where: { id: link.id }, data: { status: "SUCCESS", error: null, submittedUrl: page?.url() || "Redirected" } });
-                    await logToDB(`SUCCESS (Redirected): ${link.url}`, "SUCCESS");
-                } else {
-                    throw error;
-                }
+            } finally {
+                // Close Page, keep Browser open for next link in batch
+                if (page) try { await page.close(); } catch (e) { }
             }
-
-        } catch (error: any) {
-            // Categorize Errors
-            let status = "FAILED";
-            const msg = error.message || "Unknown error";
-
-            if (msg.includes("SKIP_CAPTCHA")) {
-                await logToDB(`Skipped (Captcha): ${link.url}`, "WARN");
-            } else if (msg.includes("SKIP_NO_FIELDS")) {
-                await logToDB(`Skipped (No Fields): ${link.url}`, "WARN");
-            } else if (msg.includes("TIMEOUT")) {
-                await logToDB(`Timeout: ${link.url}`, "WARN");
-            } else {
-                await logToDB(`Failed: ${link.url} - ${msg}`, "ERROR");
-            }
-
-            await prisma.link.update({
-                where: { id: link.id },
-                data: { status: status, error: msg }
-            });
-
-        } finally {
-            // Close Page, keep Browser open for next link in batch
-            if (page) try { await page.close(); } catch (e) { }
-        }
-    } // End Link Loop
+        } // End Link Loop
 
     } catch (e) {
-    console.error("Critical Worker Error:", e);
-} finally {
-    // Close Browser after batch
-    if (browser) try { await browser.close(); } catch (e) { }
-}
+        console.error("Critical Worker Error:", e);
+    } finally {
+        // Close Browser after batch
+        if (browser) try { await browser.close(); } catch (e) { }
+    }
 
-return { processed: links.length, status: "ACTIVE" };
+    return { processed: links.length, status: "ACTIVE" };
 }

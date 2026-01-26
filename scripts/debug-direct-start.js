@@ -13,29 +13,16 @@ const conn = new Client();
 conn.on('ready', () => {
     console.log('Client :: ready');
     const cmd = `
-        echo "=== FIXING PORT 3001 ===";
-        pm2 stop next-app || echo "next-app not running";
-        
-        echo "=== STARTING APP ON PORT 3001 ===";
-        PORT=3001 pm2 start npm --cwd /root/auto-submitter --name "next-app" -- start;
-        
-        echo "=== SAVING PM2 LIST ===";
-        pm2 save;
-
-        echo "=== WAITING FOR STARTUP (15s) ===";
-        sleep 15;
-        
-        echo "=== PM2 STATUS ===";
-        pm2 status;
-
-        echo "=== VERIFYING LOCALHOST:3001 ===";
-        curl -I http://localhost:3001;
+        cd /root/auto-submitter;
+        pm2 stop next-app;
+        echo "=== DIRECT START ===";
+        # timeout 10s to let it start then kill it
+        timeout 10s npm start -- -p 3001 -H 0.0.0.0;
     `;
 
     conn.exec(cmd, (err, stream) => {
         if (err) throw err;
         stream.on('close', (code, signal) => {
-            console.log('Stream :: close :: code: ' + code + ', signal: ' + signal);
             conn.end();
         }).on('data', (data) => {
             process.stdout.write(data);
