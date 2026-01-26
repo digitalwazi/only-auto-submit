@@ -118,88 +118,93 @@ async function runWorker() {
 
     const IDLE_TIMEOUT = 30000; // 30s
     let lastProcessedTime = Date.now();
+    let isProcessing = false; // Track if we are busy
 
-    async function checkAndResumeStuck() {
+    // Independent Watchdog Interval (30s)
+    setInterval(async () => {
         try {
-            // 1. Check if we have PENDING links globally
-            const pendingCount = await prisma.link.count({ where: { status: "PENDING" } });
-            if (pendingCount === 0) return;
-
-            console.log(`[Watchdog] Global Pending Links found (${pendingCount}) but Worker is IDLE.`);
-
-            // 2. Find campaigns associated with these pending links
-            // We find the first campaign that has pending links
-            const firstPendingLink = await prisma.link.findFirst({
-                where: { status: "PENDING" },
-                select: { campaignId: true }
-            });
-
-            if (firstPendingLink) {
-                const campaignId = firstPendingLink.campaignId;
-                console.log(`[Watchdog] Auto-Resuming Campaign ${campaignId} to process queue...`);
-
-                // Force status to RUNNING
-                await prisma.campaign.update({
-                    where: { id: campaignId },
-                    data: { status: "RUNNING" }
-                });
-                await logToDB(`Watchdog: Auto-Resumed campaign ${campaignId} (Queue stuck > 30s)`, "WARN");
-
-                // Reset timer so we don't spam
-                lastProcessedTime = Date.now();
+            if (isProcessing) {
+                // If processing for > 3 minutes, assume hung
+                if (Date.now() - lastProcessedTime > 3 * 60 * 1000) {
+                    console.error("💀 WORKER HUNG in processBatch. forcing exit...");
+                    await logToDB("Worker HUNG in processBatch (>3m). Forcing restart...", "ERROR");
+                    process.exit(1);
+                }
+                return;
             }
 
+            // Only run this check if we seem IDLE
+            if (Date.now() - lastProcessedTime > IDLE_TIMEOUT) {
+                // 1. Check if we have PENDING links globally
+                const pendingCount = await prisma.link.count({ where: { status: "PENDING" } });
+                if (pendingCount === 0) return;
+
+                console.log(`[Watchdog] Global Pending Links found (${pendingCount}) but Worker is IDLE.`);
+
+                const firstPendingLink = await prisma.link.findFirst({
+                    where: { status: "PENDING" },
+                    select: { campaignId: true }
+                });
+
+                if (firstPendingLink) {
+                    const campaignId = firstPendingLink.campaignId;
+
+                    // Force status to RUNNING
+                    await prisma.campaign.update({
+                        where: { id: campaignId },
+                        data: { status: "RUNNING" }
+                    });
+                    await logToDB(`Watchdog: Auto-Resumed campaign ${campaignId}`, "WARN");
+
+                    lastProcessedTime = Date.now(); // Reset timer
+                }
+            }
         } catch (e) {
-            console.error("Watchdog Resume Error:", e);
+            console.error("Watchdog Interval Error:", e);
         }
-    }
+    }, 30000);
 
     while (true) {
         try {
-            // Find running campaigns
-            // Process a batch of links (Worker "Immortal" Mode)
-            // The library now handles finding the campaign and processing a batch
-            const result = await processBatch();
+            isProcessing = true;
+
+            // Race processBatch against a 4-minute timeout
+            const result = await Promise.race([
+                processBatch(),
+                new Promise((_, reject) => setTimeout(() => reject(new Error("BATCH_TIMEOUT")), 240000))
+            ]) as any;
+
+            isProcessing = false;
 
             if (result.processed > 0) {
                 lastProcessedTime = Date.now();
             }
 
             if (result.status === "IDLE") {
-                // No active campaigns or no pending links
-                // console.log("No work found.");
-
-                // Check 30s Queue Watchdog
-                if (Date.now() - lastProcessedTime > IDLE_TIMEOUT) {
-                    await checkAndResumeStuck();
-                }
-
+                // Main loop is idle, just wait
             } else if (result.status === "WORKER_OFF") {
                 console.log("Worker is OFF in settings.");
             }
-        } catch (error) {
+
+        } catch (error: any) {
+            isProcessing = false;
             console.error("Worker Error:", error);
-            await logToDB(`Worker Daemon Error: ${error instanceof Error ? error.message : "Unknown"}`, "ERROR");
+            await logToDB(`Worker Daemon Error: ${error.message || "Unknown"}`, "ERROR");
+
+            // If it was a timeout, critical failure
+            if (error.message === "BATCH_TIMEOUT") {
+                process.exit(1);
+            }
         }
 
-
-        // Heartbeat Logger (Proof of Life)
         try {
             const time = new Date().toISOString();
-            const logMsg = `[${time}] Worker ALIVE - Campaigns found: Unknown(Loop)\n`;
-
+            const logMsg = `[${time}] Worker ALIVE - Loop OK\n`;
             const logDir = "./logs";
-            if (!fs.existsSync(logDir)) {
-                fs.mkdirSync(logDir, { recursive: true });
-            }
-
+            if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
             fs.appendFileSync(`${logDir}/worker.log`, logMsg);
-            // console.log("HEARTBEAT WRITTEN to logs/worker.log");
-        } catch (e) { console.error("Logger failed", e); }
+        } catch (e) { }
 
-
-
-        // Wait before next loop
         await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
     }
 }
