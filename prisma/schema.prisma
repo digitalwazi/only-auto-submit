@@ -21,14 +21,16 @@ model Campaign {
 }
 
 model Link {
-  id         String   @id @default(cuid())
-  url        String
-  status     String   @default("PENDING")
-  error      String?
-  campaignId String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  id             String   @id @default(cuid())
+  url            String
+  status         String   @default("PENDING")
+  error          String?
+  submittedUrl   String?
+  screenshotPath String?
+  campaignId     String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  campaign       Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   @@index([campaignId])
   @@index([status])

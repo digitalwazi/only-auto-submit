@@ -27,6 +27,48 @@ export async function processBatch() {
     const settings = await getSettings();
     if (!settings.isWorkerOn) return { processed: 0, status: "WORKER_OFF" };
 
+    // ========== STUCK LINK RECOVERY (30 SECOND TIMEOUT) ==========
+    try {
+        const thirtySecondsAgo = new Date(Date.now() - 30 * 1000);
+
+        // Reset any links stuck in PROCESSING for more than 30 seconds
+        const stuckLinks = await prisma.link.updateMany({
+            where: {
+                status: "PROCESSING",
+                updatedAt: { lt: thirtySecondsAgo }
+            },
+            data: { status: "PENDING", error: "Auto-recovered from stuck PROCESSING state" }
+        });
+
+        if (stuckLinks.count > 0) {
+            console.log(`[Worker] Recovered ${stuckLinks.count} stuck links`);
+            await logToDB(`Auto-recovered ${stuckLinks.count} stuck links`, "WARN");
+        }
+
+        // Reactivate COMPLETED campaigns that have pending links (race condition fix)
+        const completedCampaigns = await prisma.campaign.findMany({
+            where: { status: "COMPLETED" },
+            select: { id: true, name: true }
+        });
+
+        for (const camp of completedCampaigns) {
+            const pendingCount = await prisma.link.count({
+                where: { campaignId: camp.id, status: "PENDING" }
+            });
+            if (pendingCount > 0) {
+                await prisma.campaign.update({
+                    where: { id: camp.id },
+                    data: { status: "RUNNING" }
+                });
+                console.log(`[Worker] Reactivated campaign "${camp.name}" with ${pendingCount} pending links`);
+                await logToDB(`Reactivated campaign "${camp.name}"`, "INFO");
+            }
+        }
+    } catch (e) {
+        console.error("[Worker] Recovery check failed:", e);
+    }
+    // ========== END STUCK LINK RECOVERY ==========
+
     // Stability: Process 1 link at a time
     const concurrency = 1;
 
