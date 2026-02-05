@@ -5,41 +5,32 @@ const config = {
     port: 22,
     username: 'root',
     password: 'Wazi123@123123',
-    readyTimeout: 120000, // Long timeout for build
+    readyTimeout: 60000,
 };
 
 const conn = new Client();
 
 conn.on('ready', () => {
     console.log('Client :: ready');
-    const cmd = `
-        echo "=== 1. STOPPING ALL PROCESSES (FREE RAM) ===";
-        pm2 stop all;
-        
-        echo "=== 1.5. PULLING LATEST CODE ===";
-        cd /root/only-auto-submit;
-        git pull;
+    const envSetup = 'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && \\. "$NVM_DIR/nvm.sh"';
+    const projectDir = '/root/auto-submitter';
 
-        echo "=== 2. CLEANING PREVIOUS BUILD ===";
-        cd /root/only-auto-submit;
-        rm -rf .next;
+    const cmd = `
+        ${envSetup}
+        cd ${projectDir}
         
-        echo "=== 3. RUNNING CLEAN BUILD ===";
-        # This is memory intensive
-        export NODE_OPTIONS="--max-old-space-size=4096"; 
-        npm run build;
+        echo "=== CLEANING .NEXT ==="
+        rm -rf .next
         
-        if [ $? -eq 0 ]; then
-            echo "=== BUILD SUCCESSFUL ===";
-            echo "=== 4. RESTARTING APP ===";
-            pm2 restart next-app;
-            pm2 restart worker-daemon;
-            echo "=== 5. VERIFYING ===";
-            sleep 5;
-            pm2 logs next-app --lines 20 --nostream;
+        echo "=== BUILDING ==="
+        npm run build
+        BUILD_EXIT=$?
+        
+        if [ $BUILD_EXIT -eq 0 ]; then
+            echo "=== BUILD SUCCESS ==="
+            ls -F .next/
         else
-            echo "=== BUILD FAILED ===";
-            exit 1;
+            echo "=== BUILD FAILED (Code: $BUILD_EXIT) ==="
         fi
     `;
 

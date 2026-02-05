@@ -4,7 +4,7 @@ const config = {
     host: '31.97.188.144',
     port: 22,
     username: 'root',
-    password: 'Wazi123@123123',
+    password: 'Eng123@123123',
     readyTimeout: 60000,
     debug: (msg) => console.log('DEBUG:', msg)
 };
@@ -36,38 +36,66 @@ conn.on('ready', async () => {
     try {
         const repoUrl = 'https://github.com/digitalwazi/only-auto-submit.git';
         const projectDir = '/root/auto-submitter';
+        const domain = 'crazydealz.in';
         const envSetup = 'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && \\. "$NVM_DIR/nvm.sh"';
 
-        console.log('--- Checking Environment ---');
+        console.log('--- Checking & Cleaning Environment ---');
         await executeCommand(conn, 'git --version || (apt-get update && apt-get install -y git)');
+        await executeCommand(conn, 'nginx -v || (apt-get update && apt-get install -y nginx)');
 
-        console.log('--- preparing for Git Migration ---');
-        // Stop processes to release file locks
+        // Stop processes
         try { await executeCommand(conn, `${envSetup} && pm2 stop all`); } catch (e) { }
 
-        // Backup critical files (.env, dev.db)
-        // Check if they exist first to avoid errors
-        await executeCommand(conn, `[ -f ${projectDir}/.env ] && cp ${projectDir}/.env /root/.env.bak || echo "No .env to backup"`);
-        await executeCommand(conn, `[ -f ${projectDir}/dev.db ] && cp ${projectDir}/dev.db /root/dev.db.bak || echo "No dev.db to backup"`);
+        // Remove ALL existing data as requested
+        console.log('--- Wiping Existing Data ---');
+        await executeCommand(conn, `rm -rf ${projectDir}`);
+        await executeCommand(conn, `rm -f /root/.env.bak /root/dev.db.bak`);
 
         console.log('--- Cloning Repository ---');
-        // Wipe directory and clone
-        await executeCommand(conn, `rm -rf ${projectDir}`);
         await executeCommand(conn, `git clone ${repoUrl} ${projectDir}`);
 
-        console.log('--- Restoring Config & Data ---');
-        // Restore backups
-        await executeCommand(conn, `[ -f /root/.env.bak ] && mv /root/.env.bak ${projectDir}/.env || echo "No .env to restore"`);
-        await executeCommand(conn, `[ -f /root/dev.db.bak ] && mv /root/dev.db.bak ${projectDir}/dev.db || echo "No dev.db to restore"`);
+        console.log('--- Environment Variables ---');
+        // Create basic .env if it doesn't exist (assuming the user will fill it or we use defaults)
+        await executeCommand(conn, `cd ${projectDir} && cp .env.example .env || echo "DATABASE_URL=\\"file:./dev.db\\"" > .env`);
 
         console.log('--- Installing & Building ---');
         await executeCommand(conn, `${envSetup} && cd ${projectDir} && npm install --legacy-peer-deps`);
         await executeCommand(conn, `${envSetup} && cd ${projectDir} && npx prisma generate`);
+        await executeCommand(conn, `${envSetup} && cd ${projectDir} && npx prisma db push --accept-data-loss`);
+        // Use memory optimizations for the build
+        await executeCommand(conn, `${envSetup} && cd ${projectDir} && export NODE_OPTIONS="--max-old-space-size=2048" && npm run build`);
 
-        // Push schema to db (preserves data if possible, syncs schema)
-        await executeCommand(conn, `${envSetup} && cd ${projectDir} && npx prisma db push`);
+        console.log('--- Configuring Nginx ---');
+        // Check if Nginx config already exists and has SSL
+        const checkNginx = await executeCommand(conn, `grep -i "ssl_certificate" /etc/nginx/sites-available/${domain} || echo "NO_SSL"`);
 
-        await executeCommand(conn, `${envSetup} && cd ${projectDir} && npm run build`);
+        if (checkNginx.includes('NO_SSL')) {
+            console.log('Creating simple HTTP Nginx config (no SSL found)');
+            const nginxConfig = `
+server {
+    listen 80;
+    server_name ${domain} www.${domain};
+
+    location / {
+        proxy_pass http://localhost:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+`;
+            await executeCommand(conn, `echo '${nginxConfig}' > /etc/nginx/sites-available/${domain}`);
+            await executeCommand(conn, `ln -sf /etc/nginx/sites-available/${domain} /etc/nginx/sites-enabled/`);
+            await executeCommand(conn, `rm -f /etc/nginx/sites-enabled/default`);
+        } else {
+            console.log('SSL config found, ensuring proxy_pass is correct');
+            // We'll trust the existing config but ensure it's enabled
+            await executeCommand(conn, `ln -sf /etc/nginx/sites-available/${domain} /etc/nginx/sites-enabled/`);
+        }
+
+        await executeCommand(conn, `nginx -t && systemctl restart nginx`);
 
         console.log('--- Restarting Application ---');
         const startCmd = `pm2 restart next-app || pm2 start npm --name "next-app" -- start`;

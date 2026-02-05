@@ -12,7 +12,17 @@ const conn = new Client();
 
 conn.on('ready', () => {
     console.log('Client :: ready');
-    conn.exec('ss -tulnp | grep 3000', (err, stream) => {
+    const cmd = `
+        echo "=== UFW STATUS ==="
+        ufw status
+        echo "=== PORTS ==="
+        ss -tulnp | grep :300
+        echo "=== PM2 LIST ==="
+        pm2 list
+        echo "=== DOCKER PS ==="
+        docker ps
+    `;
+    conn.exec(cmd, (err, stream) => {
         if (err) throw err;
         stream.on('close', (code, signal) => {
             console.log('Stream :: close :: code: ' + code + ', signal: ' + signal);

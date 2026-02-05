@@ -15,21 +15,30 @@ conn.on('ready', () => {
     // 1. Restore .env from new app (assuming same creds or at least valid DATABASE_URL)
     // 2. Restore DB from 1.5MB file found in only-auto-submit
 
+    const envSetup = 'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && \\. "$NVM_DIR/nvm.sh"';
+    const projectDir = '/root/auto-submitter';
+
     const cmd = `
-        echo "=== FIXING ENV ===";
-        cp /root/only-auto-submit/.env /root/auto-submitter/.env;
+        ${envSetup}
         
-        echo "=== RESTORING DB (AGAIN) ===";
-        # Force overwrite
-        cp -f /root/only-auto-submit/prisma/dev.db /root/auto-submitter/dev.db;
-        cp -f /root/only-auto-submit/prisma/dev.db /root/auto-submitter/prisma/dev.db;
+        echo "=== ENVIRONMENT ==="
+        node -v
+        npm -v
+        pm2 -v
         
-        echo "=== VERIFYING SIZE ===";
-        ls -lh /root/auto-submitter/dev.db;
+        echo "=== RESTARTING SERVICES ==="
+        cd ${projectDir}
         
-        echo "=== RESTARTING ===";
-        pm2 restart auto-submitter-old;
-        pm2 status;
+        pm2 restart next-app || pm2 start npm --name "next-app" -- start
+        pm2 restart worker-daemon || pm2 start npm --name "worker-daemon" -- run worker
+        
+        pm2 save
+        
+        echo "=== PM2 STATUS ==="
+        pm2 list
+        
+        echo "=== PORT STATUS ==="
+        ss -tulnp | grep :300
     `;
 
     conn.exec(cmd, (err, stream) => {
