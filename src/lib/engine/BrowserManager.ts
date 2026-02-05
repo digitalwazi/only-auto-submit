@@ -38,8 +38,21 @@ export class BrowserManager {
                     '--single-process', // Critical for VPS memory
                     '--disable-gpu',
                     '--disable-features=site-per-process',
+                    // MEMORY LIMITS - Prevent OOM crashes
+                    '--js-flags=--max-old-space-size=256', // 256MB JS heap max
+                    '--disable-extensions',
+                    '--disable-background-networking',
+                    '--disable-default-apps',
+                    '--disable-sync',
+                    '--disable-translate',
+                    '--metrics-recording-only',
+                    '--mute-audio',
+                    '--no-default-browser-check',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-renderer-backgrounding',
+                    '--memory-pressure-off', // Handle pressure ourselves
                 ],
-                defaultViewport: null,
+                defaultViewport: { width: 1280, height: 720 }, // Fixed viewport to save memory
                 protocolTimeout: 60000,
                 timeout: 30000
             }) as unknown as Browser;
