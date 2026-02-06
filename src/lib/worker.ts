@@ -9,6 +9,8 @@ import { SubmissionStrategies } from "./engine/SubmissionStrategies";
 import { Verifier } from "./engine/Verifier";
 import { CampaignField } from "./engine/types";
 
+import os from "os";
+
 // Engine Classes (Lazy Instantiation)
 // const browserManager = new BrowserManager(); // Moved inside
 // const pageScanner = new PageScanner();
@@ -17,6 +19,18 @@ import { CampaignField } from "./engine/types";
 // const verifier = new Verifier();
 
 export async function processBatch() {
+    // MEMORY SAFEGUARD for VPS
+    try {
+        const freeMem = os.freemem();
+        const minMem = 500 * 1024 * 1024; // 500MB
+        if (freeMem < minMem) {
+            console.warn(`[Worker] LOW MEMORY: ${(freeMem / 1024 / 1024).toFixed(0)}MB free. Threshold: 500MB. Skipping batch.`);
+            return { processed: 0, status: "LOW_MEMORY" };
+        }
+    } catch (e) {
+        console.error("[Worker] Memory check failed", e);
+    }
+
     // Instantiate Engine per batch for isolation
     const browserManager = new BrowserManager();
     const pageScanner = new PageScanner();
