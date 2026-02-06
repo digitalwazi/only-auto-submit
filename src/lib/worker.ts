@@ -16,7 +16,7 @@ import { execSync } from "child_process";
 // ========== SERVER CRASH PREVENTION SAFEGUARDS ==========
 const LOCK_FILE = "/tmp/auto-submitter-worker.lock";
 const MIN_FREE_MEMORY_MB = 1024; // 1GB minimum free RAM required
-const COOLDOWN_SECONDS = 2; // Wait between batches
+const COOLDOWN_SECONDS = 0; // No cooldown - process as fast as possible
 const MAX_CHROME_PROCESSES = 2; // If more than this, skip processing
 
 let lastProcessTime = 0;

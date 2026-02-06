@@ -4,34 +4,35 @@ const config = {
     host: '31.97.188.144',
     port: 22,
     username: 'root',
-    password: 'Wazi123@123123',
-    readyTimeout: 60000,
+    password: 'Eng123@123123',
+    readyTimeout: 20000
 };
 
 const conn = new Client();
 
 conn.on('ready', () => {
-    console.log('Client :: ready');
+    console.log('CONNECTED');
     const cmd = `
-        echo "=== WORKER LOGS (Last 100 lines) ===";
-        pm2 logs worker-daemon --lines 100 --nostream;
+        echo "=== PM2 LIST ==="
+        pm2 list
         
-        echo "=== DB PENDING COUNT ===";
-        sqlite3 /root/only-auto-submit/prisma/dev.db "SELECT COUNT(*) FROM Link WHERE status='PENDING';"
+        echo "=== RECENT LOGS ==="
+        tail -20 /root/.pm2/logs/auto-submitter-out.log 2>/dev/null || echo "No logs"
         
-        echo "=== CAMPAIGN STATUS ===";
-        sqlite3 /root/only-auto-submit/prisma/dev.db "SELECT id, status FROM Campaign;"
+        echo "=== ERROR LOGS ==="
+        tail -10 /root/.pm2/logs/auto-submitter-error.log 2>/dev/null || echo "No errors"
+        
+        echo "=== CURL ==="
+        curl -sI http://localhost:3001 | head -3
+        
+        echo "=== MEMORY ==="
+        free -h | head -2
     `;
 
     conn.exec(cmd, (err, stream) => {
         if (err) throw err;
-        stream.on('close', (code, signal) => {
-            console.log('Stream :: close :: code: ' + code + ', signal: ' + signal);
-            conn.end();
-        }).on('data', (data) => {
-            process.stdout.write(data);
-        }).stderr.on('data', (data) => {
-            process.stderr.write(data);
-        });
+        stream.on('data', d => process.stdout.write(d))
+            .on('stderr', d => process.stderr.write(d))
+            .on('close', () => conn.end());
     });
-}).connect(config);
+}).on('error', e => console.error('ERROR:', e.message)).connect(config);

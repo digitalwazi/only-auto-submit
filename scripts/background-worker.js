@@ -1,11 +1,11 @@
 /**
- * Background Worker Script - WITH SAFEGUARDS
+ * Background Worker Script
  * Runs via PM2 independently of browser connections.
- * Polls every 30 seconds (not 5!) to prevent server overload.
+ * Polls every 5 seconds for fast processing.
  */
 
 const BASE_URL = process.env.WORKER_URL || 'http://localhost:3001';
-const POLL_INTERVAL = 30000; // 30 seconds - IMPORTANT: Don't reduce this!
+const POLL_INTERVAL = 5000; // 5 seconds
 const MAX_CONSECUTIVE_ERRORS = 5;
 
 let consecutiveErrors = 0;
