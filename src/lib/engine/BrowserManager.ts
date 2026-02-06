@@ -29,33 +29,33 @@ export class BrowserManager {
         try {
             this.browser = await puppeteer.launch({
                 headless,
+                // Use system Chrome for reliability on VPS
+                executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome',
                 args: [
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
                     '--disable-dev-shm-usage',
                     '--no-first-run',
                     '--no-zygote',
-                    '--single-process', // Critical for VPS memory
+                    // REMOVED: '--single-process' - causes startup timeout on Linux
                     '--disable-gpu',
+                    '--disable-software-rasterizer',
                     '--disable-features=site-per-process',
-                    // MEMORY LIMITS - Prevent OOM crashes
-                    '--js-flags=--max-old-space-size=256', // 256MB JS heap max
+                    // MEMORY LIMITS
+                    '--js-flags=--max-old-space-size=256',
                     '--disable-extensions',
                     '--disable-background-networking',
                     '--disable-default-apps',
                     '--disable-sync',
                     '--disable-translate',
-                    '--metrics-recording-only',
                     '--mute-audio',
                     '--no-default-browser-check',
-                    '--disable-backgrounding-occluded-windows',
-                    '--disable-renderer-backgrounding',
-                    '--memory-pressure-off', // Handle pressure ourselves
                 ],
-                defaultViewport: { width: 1280, height: 720 }, // Fixed viewport to save memory
-                protocolTimeout: 60000,
-                timeout: 30000
+                defaultViewport: { width: 1280, height: 720 },
+                protocolTimeout: 120000, // Increased from 60s
+                timeout: 60000 // Increased from 30s
             }) as unknown as Browser;
+            console.log('[BrowserManager] Browser launched successfully');
         } catch (e) {
             console.error('[BrowserManager] Fatal Launch Error:', e);
             throw e;
